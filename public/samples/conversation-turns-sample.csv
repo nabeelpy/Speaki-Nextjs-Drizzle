@@ -1,0 +1,4 @@
+Order,Role,Text,es-ES,fr-FR,zh-CN,Romanization:zh-CN,Romanization:ja-JP
+0,Officer,"Hello! May I see your passport?","¡Hola! ¿Puedo ver su pasaporte?","Bonjour ! Puis-je voir votre passeport ?","您好！请出示您的护照。","Nín hǎo! Qǐng chūshì nín de hùzhào.","Konnichiwa. Pasupōto o misete itadakemasu ka?"
+1,Passenger,"Yes, here it is.","Sí, aquí está.","Oui, le voici.","好的，给您。","Hǎo de, gěi nín.","Hai, kochira desu."
+2,Officer,"Do you have any bags to check?","¿Tiene equipaje para facturar?","Avez-vous des bagages à enregistrer ?","您有需要托运的行李吗？","Nín yǒu xūyào tuōyùn de xínglǐ ma?","Azukeru nimotsu wa arimasu ka?"
