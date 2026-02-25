@@ -41,11 +41,11 @@ export async function POST(req: NextRequest) {
                 // Expected columns: Order, Role, Text
                 // Optional: es-ES, zh-CN, zh-CN-Romanization (format: Romanization:zh-CN)
 
-                const order = row['Order'] || row['order'];
-                const role = row['Role'] || row['role'];
-                const text = row['Text'] || row['text'];
+                const order = (row['Order'] ?? row['order']) as number | string | undefined;
+                const role = (row['Role'] ?? row['role']) as string | undefined;
+                const text = (row['Text'] ?? row['text']) as string | undefined;
 
-                if (order === undefined || !role || !text) {
+                if (order === undefined || order === null || !role || !text) {
                     continue; // Skip invalid rows
                 }
 
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
                     text,
                     textByLang: Object.keys(textByLang).length > 0 ? JSON.stringify(textByLang) as any : null,
                     romanizationByLang: Object.keys(romanizationByLang).length > 0 ? JSON.stringify(romanizationByLang) as any : null,
-                    orderIndex: order,
+                    orderIndex: typeof order === 'string' ? parseInt(order, 10) : (order as number),
                 });
             }
 

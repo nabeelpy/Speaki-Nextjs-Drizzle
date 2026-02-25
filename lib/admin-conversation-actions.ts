@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { db } from "@/db";
-import { lessonConversations } from "@/db/schema";
+import { lessonConversations, lessons } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 const ConversationSchema = z.object({
@@ -57,6 +57,12 @@ export async function createConversation(prevState: ConversationState, formData:
             description: description || null,
             scenario: scenario || null,
         });
+        if (lessonId) {
+            await db
+                .update(lessons)
+                .set({ conversationId: id })
+                .where(eq(lessons.id, lessonId));
+        }
     } catch (error) {
         console.error('Database Error:', error);
         return {
@@ -98,6 +104,12 @@ export async function updateConversation(id: string, prevState: ConversationStat
                 scenario: scenario || null,
             })
             .where(eq(lessonConversations.id, id));
+        if (lessonId) {
+            await db
+                .update(lessons)
+                .set({ conversationId: id })
+                .where(eq(lessons.id, lessonId));
+        }
     } catch (error) {
         console.error('Database Error:', error);
         return { message: 'Database Error: Failed to Update Conversation.' };

@@ -91,7 +91,12 @@ export default function AudioLessonInterface({
     const hasInitialized = useRef(false)
 
     const currentTurn = conversation.turns[currentTurnIndex]
-    const isUserTurn = currentTurn?.role === 'Passenger' // User plays Passenger role
+    const roleNorm = (currentTurn?.role ?? '').trim().toLowerCase()
+    const USER_ROLE_ALIASES = ['passenger', 'user', 'you', 'student', 'customer', 'learner','Friend']
+    const AI_ROLE_ALIASES = ['officer', 'ai', 'agent', 'system', 'teacher', 'assistant','Me']
+    const isUserTurn =
+        USER_ROLE_ALIASES.includes(roleNorm) ||
+        (!AI_ROLE_ALIASES.includes(roleNorm) && currentTurnIndex % 2 === 1)
 
     const uiLocale = getUILocale(language)
     const selectedVoiceAgent = VOICE_AGENTS.find((a) => a.id === voiceAgentId) ?? getDefaultVoiceAgentForLang(language)
@@ -140,7 +145,23 @@ export default function AudioLessonInterface({
         const initializeConversation = async () => {
             await new Promise((resolve) => setTimeout(resolve, 500))
             const firstTurn = conversation.turns[0]
-            if (conversation.turns.length > 0 && firstTurn.role !== 'Passenger') {
+            if (!firstTurn) return
+            const normalizeRole = (r?: string) => (r ?? '').trim().toLowerCase()
+            const USER_ROLE_ALIASES = ['passenger', 'user', 'you', 'student', 'customer', 'learner', 'friend']
+            const AI_ROLE_ALIASES = ['officer', 'ai', 'agent', 'system', 'teacher', 'assistant', 'me']
+            const t0 = conversation.turns[0]
+            const t1 = conversation.turns[1]
+            let aiRoleNorm: string | null = null
+            let userRoleNorm: string | null = null
+            if (t0 && t1 && normalizeRole(t0.role) !== normalizeRole(t1.role)) {
+                aiRoleNorm = normalizeRole(t0.role)
+                userRoleNorm = normalizeRole(t1.role)
+            }
+            const firstNorm = normalizeRole(firstTurn.role)
+            const firstIsAI =
+                (aiRoleNorm && firstNorm === aiRoleNorm) ||
+                (!userRoleNorm && AI_ROLE_ALIASES.includes(firstNorm))
+            if (firstIsAI) {
                 playAIMessage(getTurnText(firstTurn, language), firstTurn.role, 0)
             }
         }
@@ -249,14 +270,27 @@ export default function AudioLessonInterface({
         setIsPlayingCombined(true)
         setPlaybackProgress(0)
 
-        // Play by conversation turn order (0, 1, 2, ...): Officer = TTS, Passenger = user recording
+        // Play conversation turns in order, mixing user recordings and AI TTS
         const numTurns = conversation.turns.length
+        const normalizeRole = (r?: string) => (r ?? '').trim().toLowerCase()
+        const USER_ROLE_ALIASES = ['passenger', 'user', 'you', 'student', 'customer', 'learner', 'friend']
+        const AI_ROLE_ALIASES = ['officer', 'ai', 'agent', 'system', 'teacher', 'assistant', 'me']
+        const t0 = conversation.turns[0]
+        const t1 = conversation.turns[1]
+        let userRoleNorm: string | null = null
+        if (t0 && t1 && normalizeRole(t0.role) !== normalizeRole(t1.role)) {
+            userRoleNorm = normalizeRole(t1.role)
+        }
+
         for (let turnIdx = 0; turnIdx < numTurns; turnIdx++) {
             const turn = conversation.turns[turnIdx]
             const progress = ((turnIdx + 1) / numTurns) * 100
             setPlaybackProgress(progress)
 
-            const isUserTurn = turn.role === 'Passenger'
+            const roleNorm = normalizeRole(turn.role)
+            const isUserTurn = userRoleNorm
+                ? roleNorm === userRoleNorm
+                : USER_ROLE_ALIASES.includes(roleNorm) || (!AI_ROLE_ALIASES.includes(roleNorm) && turnIdx % 2 === 1)
             if (isUserTurn) {
                 const userMsg = messages.find((m) => m.speaker === 'user' && m.turnOrder === turnIdx)
                 if (userMsg?.audioUrl) {
