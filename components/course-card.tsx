@@ -22,15 +22,23 @@ export default function CourseCard({
   const courseHref = `${basePath}/courses/${course.id}`.replace(/^\/+/, '/') || '/courses/' + course.id
   return (
     <div className="bg-white dark:bg-slate-900 border border-[#e7edf3] dark:border-slate-800 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col group">
-      <div className={`h-48 bg-slate-200 dark:bg-slate-800 relative overflow-hidden bg-gradient-to-br ${colorScheme.bg}`}>
+      <div className="h-48 bg-slate-200 dark:bg-slate-800 relative overflow-hidden">
         <div className="absolute top-4 left-4 bg-white/90 dark:bg-slate-900/90 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
           {course.level}
         </div>
-        <div className="flex items-center justify-center h-full">
-          <span className="text-6xl group-hover:scale-110 transition-transform">
-            {String.fromCharCode(65 + Math.floor(Math.random() * 26))}
-          </span>
-        </div>
+        {course.thumbnail ? (
+          <img
+            src={course.thumbnail}
+            alt={course.title}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className={`w-full h-full bg-gradient-to-br ${colorScheme.bg} flex items-center justify-center`}>
+            <span className="text-6xl group-hover:scale-110 transition-transform">
+              {String.fromCharCode(65 + Math.floor(Math.random() * 26))}
+            </span>
+          </div>
+        )}
       </div>
       <div className="p-6 flex flex-col grow">
         <div className="flex justify-between items-start mb-2">

@@ -6,6 +6,8 @@ import { z } from 'zod';
 import { db } from "@/db";
 import { courses } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import fs from 'node:fs/promises';
+import path from 'node:path';
 
 const CourseSchema = z.object({
     id: z.string(),
@@ -43,7 +45,8 @@ export async function createCourse(prevState: State, formData: FormData) {
         description: formData.get('description'),
         level: formData.get('level'),
         category: formData.get('category'),
-        thumbnail: formData.get('thumbnail'),
+        // keep thumbnail in schema; we'll override with uploaded file path if a file is provided
+        thumbnail: null,
         duration: formData.get('duration') || null,
         lessons_count: 0,
         instructor: formData.get('instructor'),
@@ -66,18 +69,29 @@ export async function createCourse(prevState: State, formData: FormData) {
     const id = `c${Date.now()}`;
 
     try {
+        let thumbnailUrl: string | null = null;
+        const thumbFile = formData.get('thumbnail') as unknown as File | null;
+        if (thumbFile && typeof thumbFile === 'object' && 'arrayBuffer' in thumbFile) {
+            const bytes = Buffer.from(await (thumbFile as any).arrayBuffer());
+            const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'courses');
+            await fs.mkdir(uploadsDir, { recursive: true });
+            const safeName = `${id}-${(thumbFile as any).name?.replace(/[^a-zA-Z0-9._-]/g, '') || 'thumbnail'}`;
+            const outPath = path.join(uploadsDir, safeName);
+            await fs.writeFile(outPath, bytes);
+            thumbnailUrl = `/uploads/courses/${safeName}`;
+        }
         await db.insert(courses).values({
             id,
             title,
             description: description || null,
             level: level as any,
             category: category || null,
-            thumbnail: thumbnail || null,
+            thumbnail: thumbnailUrl || null,
             duration: duration || 0,
             lessonsCount: lessons_count || 0,
             instructor: instructor || null,
-            xpReward: xp_reward || 0,
-        });
+            xpReward: xp_reward || 0});
+
         console.log('Course created successfully:', id);
     } catch (error) {
         console.error('Database Error:', error);
@@ -96,7 +110,8 @@ export async function updateCourse(id: string, prevState: State, formData: FormD
         description: formData.get('description'),
         level: formData.get('level'),
         category: formData.get('category'),
-        thumbnail: formData.get('thumbnail'),
+        // thumbnail handled via file upload below
+        thumbnail: null,
         duration: formData.get('duration') || null,
         lessons_count: formData.get('lessons_count') || 0,
         instructor: formData.get('instructor'),
@@ -115,6 +130,17 @@ export async function updateCourse(id: string, prevState: State, formData: FormD
     const { title, description, level, category, thumbnail, duration, lessons_count, instructor, xp_reward } = validatedFields.data;
 
     try {
+        let thumbnailUrlSet: string | undefined;
+        const thumbFile = formData.get('thumbnail') as unknown as File | null;
+        if (thumbFile && typeof thumbFile === 'object' && 'arrayBuffer' in thumbFile) {
+            const bytes = Buffer.from(await (thumbFile as any).arrayBuffer());
+            const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'courses');
+            await fs.mkdir(uploadsDir, { recursive: true });
+            const safeName = `${id}-${(thumbFile as any).name?.replace(/[^a-zA-Z0-9._-]/g, '') || 'thumbnail'}`;
+            const outPath = path.join(uploadsDir, safeName);
+            await fs.writeFile(outPath, bytes);
+            thumbnailUrlSet = `/uploads/courses/${safeName}`;
+        }
         await db
             .update(courses)
             .set({
@@ -122,7 +148,7 @@ export async function updateCourse(id: string, prevState: State, formData: FormD
                 description: description || null,
                 level: level as any,
                 category: category || null,
-                thumbnail: thumbnail || null,
+                ...(thumbnailUrlSet ? { thumbnail: thumbnailUrlSet } : {}),
                 duration: duration || 0,
                 lessonsCount: lessons_count || 0,
                 instructor: instructor || null,

@@ -40,7 +40,7 @@ export default function Header() {
                 : 'text-[#0d141b] dark:text-slate-300 hover:text-[#137fec]'
             }`}
           >
-            Quick Start
+            Languages
           </Link>
           <Link
             href="/debates"
@@ -51,16 +51,6 @@ export default function Header() {
             }`}
           >
             Debates
-          </Link>
-          <Link
-            href="/dashboard"
-            className={`text-sm font-medium leading-normal transition-colors ${
-              isActive('/dashboard')
-                ? 'text-[#137fec]'
-                : 'text-[#0d141b] dark:text-slate-300 hover:text-[#137fec]'
-            }`}
-          >
-            Dashboard
           </Link>
         </nav>
       </div>

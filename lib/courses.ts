@@ -69,7 +69,7 @@ export async function getCourses(filters: GetCoursesFilters = {}): Promise<Cours
       rating: Number(row.rating),
       ratingCount: Number(row.ratingCount),
       isTrending: Boolean(row.isTrending),
-      createdAt: new Date(row.createdAt).toISOString()
+      createdAt: new Date(row.createdAt ?? Date.now()).toISOString(),
     }))
   } catch (error) {
     console.error("Database Error:", error)
@@ -130,7 +130,7 @@ export async function getCourseById(id: string): Promise<CourseWithLessons | nul
       rating: Number(course.rating),
       ratingCount: Number(course.ratingCount),
       isTrending: Boolean(course.isTrending),
-      createdAt: new Date(course.createdAt).toISOString(),
+      createdAt: course.createdAt ? new Date(course.createdAt).toISOString() : '',
       lessons: lessonRows
     }
   } catch (error) {

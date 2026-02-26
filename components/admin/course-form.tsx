@@ -92,6 +92,29 @@ export default function CourseForm({ course }: { course?: Course }) {
                 </div>
 
                 <div className="mb-4">
+                    <Label htmlFor="thumbnail" className="mb-2 block text-sm font-medium">
+                        Course Image (thumbnail)
+                    </Label>
+                    <div className="relative mt-2 rounded-md">
+                        <Input
+                            id="thumbnail"
+                            name="thumbnail"
+                            type="file"
+                            accept="image/*"
+                        />
+                    </div>
+                    {course?.thumbnail && (
+                        <div className="mt-3">
+                            <img
+                                src={course.thumbnail}
+                                alt="Current course thumbnail"
+                                className="h-28 w-28 object-cover rounded-md border"
+                            />
+                        </div>
+                    )}
+                </div>
+
+                <div className="mb-4">
                     <Label htmlFor="description" className="mb-2 block text-sm font-medium">
                         Description
                     </Label>
