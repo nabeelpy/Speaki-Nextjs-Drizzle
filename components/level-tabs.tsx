@@ -9,7 +9,7 @@ const levels = [
   { id: 'A1', label: 'A1 Beginner' },
   { id: 'A2', label: 'A2 Elementary' },
   { id: 'B1', label: 'B1 Intermediate' },
-  { id: 'B2', label: 'B2 Upper-Int' },
+  { id: 'B2', label: 'B2 Upper-Intermediate' },
 ]
 
 export default function LevelTabs({ activeLevel, setActiveLevel }: LevelTabsProps) {

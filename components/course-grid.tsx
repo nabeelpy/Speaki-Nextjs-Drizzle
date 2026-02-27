@@ -1,21 +1,31 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
 import useSWR from 'swr'
 import CourseCard from './course-card'
 import type { Course } from '@/lib/types'
 
 interface CourseGridProps {
-  level: string
+  level?: string | null
+  category?: string | null
+  search?: string | null
   /** Base path for course links (e.g. "" for /courses, "/quick-start" for /quick-start/courses) */
   basePath?: string
 }
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
-export default function CourseGrid({ level, basePath = '' }: CourseGridProps) {
+export default function CourseGrid({ level, category, search, basePath = '' }: CourseGridProps) {
   const [likedCourses, setLikedCourses] = useState<string[]>([])
-  const { data, isLoading } = useSWR(`/api/courses?level=${level}`, fetcher)
+  const qs = useMemo(() => {
+    const params = new URLSearchParams()
+    if (level) params.set('level', level)
+    if (category) params.set('category', category)
+    if (search) params.set('search', search)
+    const s = params.toString()
+    return `/api/courses${s ? `?${s}` : ''}`
+  }, [level, category, search])
+  const { data, isLoading } = useSWR(qs, fetcher)
 
   const courses: Course[] = data?.data || []
 

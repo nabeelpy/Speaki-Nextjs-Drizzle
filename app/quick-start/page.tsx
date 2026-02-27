@@ -1,14 +1,9 @@
 'use client'
-
-import { useState } from 'react'
 import Header from '@/components/header'
-import LevelTabs from '@/components/level-tabs'
-import CourseGrid from '@/components/course-grid'
+import CoursesBrowse from '@/components/courses-browse'
 import MobileNav from '@/components/mobile-nav'
 
 export default function QuickStartPage() {
-  const [activeLevel, setActiveLevel] = useState('A1')
-
   return (
     <div className="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
       <div className="layout-container flex h-full grow flex-col">
@@ -23,9 +18,7 @@ export default function QuickStartPage() {
               Jump into conversation practice. Same courses and lessons—get started quickly.
             </p>
           </section>
-
-          <LevelTabs activeLevel={activeLevel} setActiveLevel={setActiveLevel} />
-          <CourseGrid level={activeLevel} basePath="/quick-start" />
+          <CoursesBrowse basePath="/quick-start" />
         </main>
         <MobileNav />
       </div>
