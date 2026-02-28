@@ -18,7 +18,7 @@ export default function Header() {
             </svg>
           </div>
           <h2 className="hidden md:block text-[#0d141b] dark:text-white text-lg font-bold leading-tight tracking-[-0.015em]">
-            Speaking Practice
+            FreeSpeaki
           </h2>
         </Link>
         <nav className="hidden md:flex items-center gap-9">
@@ -79,11 +79,11 @@ export default function Header() {
         >
           Debate Now
         </Link>
-        <img
+        {/* <img
           src="https://api.dicebear.com/7.x/avataaars/svg?seed=User"
           alt="User avatar"
           className="w-10 h-10 rounded-full border-2 border-[#137fec]/20"
-        />
+        /> */}
       </div>
     </header>
   )

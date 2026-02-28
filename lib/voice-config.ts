@@ -23,22 +23,8 @@ export const SUPPORTED_LANGUAGES: LanguageOption[] = [
   { code: 'en-US', name: 'English (US)', nativeName: 'English' },
   { code: 'en-GB', name: 'English (UK)', nativeName: 'English' },
   { code: 'es-ES', name: 'Spanish (Spain)', nativeName: 'Español' },
-  { code: 'es-MX', name: 'Spanish (Mexico)', nativeName: 'Español' },
   { code: 'fr-FR', name: 'French (France)', nativeName: 'Français' },
-  { code: 'de-DE', name: 'German', nativeName: 'Deutsch' },
-  { code: 'it-IT', name: 'Italian', nativeName: 'Italiano' },
-  { code: 'pt-BR', name: 'Portuguese (Brazil)', nativeName: 'Português' },
-  { code: 'pt-PT', name: 'Portuguese (Portugal)', nativeName: 'Português' },
-  { code: 'ja-JP', name: 'Japanese', nativeName: '日本語' },
-  { code: 'ko-KR', name: 'Korean', nativeName: '한국어' },
-  { code: 'zh-CN', name: 'Chinese (Simplified)', nativeName: '中文' },
-  { code: 'zh-TW', name: 'Chinese (Traditional)', nativeName: '中文' },
   { code: 'ar-SA', name: 'Arabic', nativeName: 'العربية' },
-  { code: 'hi-IN', name: 'Hindi', nativeName: 'हिन्दी' },
-  { code: 'nl-NL', name: 'Dutch', nativeName: 'Nederlands' },
-  { code: 'ru-RU', name: 'Russian', nativeName: 'Русский' },
-  { code: 'pl-PL', name: 'Polish', nativeName: 'Polski' },
-  { code: 'tr-TR', name: 'Turkish', nativeName: 'Türkçe' },
 ]
 
 /** Voice agents: accent presets per language. Users pick an agent for TTS voice. */
@@ -56,25 +42,8 @@ export const VOICE_AGENTS: VoiceAgent[] = [
   // French
   { id: 'fr-fr-1', name: 'fr-FR-1', lang: 'fr-FR', accentLabel: 'French (France)', voiceNameHint: 'French' },
   { id: 'fr-ca-1', name: 'fr-CA-1', lang: 'fr-CA', accentLabel: 'French (Canada)', voiceNameHint: 'Canadian' },
-  // German
-  { id: 'de-de-1', name: 'de-DE-1', lang: 'de-DE', accentLabel: 'German', voiceNameHint: 'German' },
-  // Italian
-  { id: 'it-it-1', name: 'it-IT-1', lang: 'it-IT', accentLabel: 'Italian', voiceNameHint: 'Italian' },
-  // Portuguese
-  { id: 'pt-br-1', name: 'pt-BR-1', lang: 'pt-BR', accentLabel: 'Portuguese (Brazil)', voiceNameHint: 'Brazil' },
-  { id: 'pt-pt-1', name: 'pt-PT-1', lang: 'pt-PT', accentLabel: 'Portuguese (Portugal)', voiceNameHint: 'Portugal' },
-  // East Asian
-  { id: 'ja-jp-1', name: 'ja-JP-1', lang: 'ja-JP', accentLabel: 'Japanese', voiceNameHint: 'Japanese' },
-  { id: 'ko-kr-1', name: 'ko-KR-1', lang: 'ko-KR', accentLabel: 'Korean', voiceNameHint: 'Korean' },
   { id: 'zh-cn-1', name: 'zh-CN-1', lang: 'zh-CN', accentLabel: 'Chinese (Mandarin)', voiceNameHint: 'Chinese' },
-  { id: 'zh-tw-1', name: 'zh-TW-1', lang: 'zh-TW', accentLabel: 'Chinese (Taiwan)', voiceNameHint: 'Taiwan' },
-  // Others
   { id: 'ar-sa-1', name: 'ar-SA-1', lang: 'ar-SA', accentLabel: 'Arabic', voiceNameHint: 'Arabic' },
-  { id: 'hi-in-1', name: 'hi-IN-1', lang: 'hi-IN', accentLabel: 'Hindi', voiceNameHint: 'Hindi' },
-  { id: 'nl-nl-1', name: 'nl-NL-1', lang: 'nl-NL', accentLabel: 'Dutch', voiceNameHint: 'Dutch' },
-  { id: 'ru-ru-1', name: 'ru-RU-1', lang: 'ru-RU', accentLabel: 'Russian', voiceNameHint: 'Russian' },
-  { id: 'pl-pl-1', name: 'pl-PL-1', lang: 'pl-PL', accentLabel: 'Polish', voiceNameHint: 'Polish' },
-  { id: 'tr-tr-1', name: 'tr-TR-1', lang: 'tr-TR', accentLabel: 'Turkish', voiceNameHint: 'Turkish' },
 ]
 
 /** True if the language is English (any variant: en-US, en-GB, etc.). */
