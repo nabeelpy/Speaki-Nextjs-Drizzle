@@ -17,6 +17,7 @@ const LessonSchema = z.object({
     video_url: z.string().nullable().optional(),
     element_order: z.coerce.number().int().nonnegative().optional().nullable(),
     conversation_id: z.string().nullable().optional(),
+    recording_delay_seconds: z.coerce.number().int().nonnegative().optional().nullable(),
 });
 
 const CreateLesson = LessonSchema.omit({ id: true });
@@ -46,6 +47,7 @@ export async function createLesson(prevState: LessonState, formData: FormData) {
         video_url: formData.get('video_url'),
         element_order: formData.get('element_order') || null,
         conversation_id: formData.get('conversation_id') || null,
+        recording_delay_seconds: formData.get('recording_delay_seconds') || null,
     };
 
     const validatedFields = CreateLesson.safeParse(rawData);
@@ -57,7 +59,7 @@ export async function createLesson(prevState: LessonState, formData: FormData) {
         };
     }
 
-    const { course_id, title, description, content, duration, video_url, element_order, conversation_id } = validatedFields.data;
+    const { course_id, title, description, content, duration, video_url, element_order, conversation_id, recording_delay_seconds } = validatedFields.data;
     const id = `l${Date.now()}`;
 
     try {
@@ -71,6 +73,7 @@ export async function createLesson(prevState: LessonState, formData: FormData) {
             videoUrl: video_url || null,
             elementOrder: element_order || 0,
             conversationId: conversation_id || null,
+            recordingDelaySeconds: recording_delay_seconds || null,
         });
 
         await db
@@ -100,6 +103,7 @@ export async function updateLesson(id: string, prevState: LessonState, formData:
         video_url: formData.get('video_url'),
         element_order: formData.get('element_order') || null,
         conversation_id: formData.get('conversation_id') || null,
+        recording_delay_seconds: formData.get('recording_delay_seconds') || null,
     };
 
     const validatedFields = UpdateLesson.omit({ id: true }).safeParse(rawData);
@@ -111,7 +115,7 @@ export async function updateLesson(id: string, prevState: LessonState, formData:
         };
     }
 
-    const { course_id, title, description, content, duration, video_url, element_order, conversation_id } = validatedFields.data;
+    const { course_id, title, description, content, duration, video_url, element_order, conversation_id, recording_delay_seconds } = validatedFields.data;
 
     try {
         await db
@@ -125,6 +129,7 @@ export async function updateLesson(id: string, prevState: LessonState, formData:
                 videoUrl: video_url || null,
                 elementOrder: element_order || 0,
                 conversationId: conversation_id || null,
+                recordingDelaySeconds: recording_delay_seconds || null,
             })
             .where(eq(lessons.id, id));
     } catch (error) {

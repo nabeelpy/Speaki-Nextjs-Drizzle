@@ -151,6 +151,22 @@ export default function LessonForm({ lesson, courses }: { lesson?: Lesson, cours
                 </div>
 
                 <div className="mb-4">
+                    <Label htmlFor="recording_delay_seconds" className="mb-2 block text-sm font-medium">
+                        Recording Delay (seconds)
+                    </Label>
+                    <div className="relative mt-2 rounded-md">
+                        <Input
+                            id="recording_delay_seconds"
+                            name="recording_delay_seconds"
+                            type="number"
+                            min={0}
+                            defaultValue={lesson?.recordingDelaySeconds ?? ''}
+                            placeholder="e.g. 5, 7, 10"
+                        />
+                    </div>
+                </div>
+
+                <div className="mb-4">
                     <Label htmlFor="conversation_id" className="mb-2 block text-sm font-medium">
                         Conversation ID (Optional)
                     </Label>

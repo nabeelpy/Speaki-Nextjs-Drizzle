@@ -36,6 +36,7 @@ export default function LessonPage({
     const [selectedVoiceAgentId, setSelectedVoiceAgentId] = useState<string>(
         () => getDefaultVoiceAgentForLang(DEFAULT_LANG)?.id ?? VOICE_AGENTS[0]?.id ?? ''
     )
+    const [recordDelaySeconds, setRecordDelaySeconds] = useState<number>(4)
 
     useEffect(() => {
         params.then((p) => setLessonId(p.id))
@@ -56,6 +57,18 @@ export default function LessonPage({
     )
 
     const conversation: LessonConversation = data?.data
+    useEffect(() => {
+        if (conversation) {
+            const configured = conversation.recordingDelaySeconds
+            if (typeof configured === 'number' && configured > 0) {
+                setRecordDelaySeconds(configured)
+            } else {
+                const turns = conversation.turns?.length ?? 0
+                const derived = turns <= 6 ? 5 : turns <= 12 ? 7 : 10
+                setRecordDelaySeconds(derived)
+            }
+        }
+    }, [conversation])
 
     const handleLessonComplete = (messages: ConversationMessage[]) => {
         setHasStarted(false)
@@ -145,10 +158,10 @@ export default function LessonPage({
 
                             <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg p-6 mb-8">
                                 <h3 className="font-bold text-[#0d141b] dark:text-white mb-4">
-                                    Language &amp; voice
+                                    Language, voice &amp; delay
                                 </h3>
                                 <p className="text-sm text-[#4c739a] dark:text-slate-400 mb-4">
-                                    Choose the language for the conversation and the AI voice accent before you start.
+                                    Choose the language, AI voice accent, and automatic delay before recording.
                                 </p>
                                 <div className="flex flex-wrap items-end gap-4">
                                     <div className="flex flex-col gap-1.5 min-w-[180px]">
@@ -188,6 +201,23 @@ export default function LessonPage({
                                             </SelectContent>
                                         </Select>
                                     </div>
+                                    <div className="flex flex-col gap-1.5 min-w-[200px]">
+                                        <Label className="text-xs font-semibold text-[#4c739a] dark:text-slate-400">
+                                            Delay Before Recording
+                                        </Label>
+                                        <Select value={String(recordDelaySeconds)} onValueChange={(v) => setRecordDelaySeconds(Number(v))}>
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Select delay" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {[2, 4, 6, 8, 10].map((d) => (
+                                                    <SelectItem key={d} value={String(d)}>
+                                                        {d} seconds
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                 </div>
                             </div>
 
@@ -206,6 +236,7 @@ export default function LessonPage({
                             onComplete={handleLessonComplete}
                             defaultLanguage={selectedLanguage}
                             defaultVoiceAgentId={selectedVoiceAgentId}
+                            recordDelaySeconds={recordDelaySeconds}
                         />
                     )}
                 </main>

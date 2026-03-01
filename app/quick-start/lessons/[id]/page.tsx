@@ -24,6 +24,8 @@ import {
 import { Label } from '@/components/ui/label'
 
 const DEFAULT_LANG = 'en-US'
+const DEFAULT_DELAY_SECONDS = 2
+const DELAY_OPTIONS = [2, 4, 6, 8, 10]
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
 export default function QuickStartLessonPage({
@@ -37,6 +39,7 @@ export default function QuickStartLessonPage({
     const [selectedVoiceAgentId, setSelectedVoiceAgentId] = useState<string>(
         () => getDefaultVoiceAgentForLang(DEFAULT_LANG)?.id ?? VOICE_AGENTS[0]?.id ?? ''
     )
+    const [delayBeforeRecording, setDelayBeforeRecording] = useState(DEFAULT_DELAY_SECONDS)
 
     useEffect(() => {
         params.then((p) => setLessonId(p.id))
@@ -186,6 +189,26 @@ export default function QuickStartLessonPage({
                                             </SelectContent>
                                         </Select>
                                     </div>
+                                    <div className="flex flex-col gap-1.5 min-w-[180px]">
+                                        <Label className="text-xs font-semibold text-[#4c739a] dark:text-slate-400">
+                                            Delay Before Recording
+                                        </Label>
+                                        <Select 
+                                            value={delayBeforeRecording.toString()} 
+                                            onValueChange={(val) => setDelayBeforeRecording(Number(val))}
+                                        >
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Select delay" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {DELAY_OPTIONS.map((opt) => (
+                                                    <SelectItem key={opt} value={opt.toString()}>
+                                                        {opt} seconds
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                 </div>
                             </div>
 
@@ -204,6 +227,7 @@ export default function QuickStartLessonPage({
                             onComplete={handleLessonComplete}
                             defaultLanguage={selectedLanguage}
                             defaultVoiceAgentId={selectedVoiceAgentId}
+                            delayBeforeRecording={delayBeforeRecording}
                         />
                     )}
                 </main>

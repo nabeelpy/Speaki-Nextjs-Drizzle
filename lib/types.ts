@@ -58,6 +58,8 @@ export interface ConversationTurn {
   /** Optional romanization/transliteration: locale code -> Latin script (e.g. 'ar-SA' -> 'Marhaban...') */
   romanizationByLang?: Record<string, string>
   order: number
+  /** Recording duration in seconds for this turn (DB-driven) */
+  recordingTime?: number | null
 }
 
 export interface LessonConversation {
@@ -66,8 +68,11 @@ export interface LessonConversation {
   title: string
   description: string
   scenario: string // e.g., "Airport Check-in", "Restaurant Order"
+  recordingDelaySeconds?: number
+  recording_time?: number
   turns: ConversationTurn[]
 }
+
 
 export interface ConversationMessage {
   id: string

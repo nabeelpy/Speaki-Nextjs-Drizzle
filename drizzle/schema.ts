@@ -177,6 +177,7 @@ export const lessons = pgTable("lessons", {
 	videoUrl: varchar("video_url", { length: 255 }).default(sql`NULL`),
 	elementOrder: integer("element_order"),
 	conversationId: varchar("conversation_id", { length: 255 }).default(sql`NULL`),
+	recordingDelaySeconds: integer("recording_delay_seconds"),
 }, (table) => [
 	foreignKey({
 			columns: [table.courseId],

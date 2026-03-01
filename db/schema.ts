@@ -29,6 +29,7 @@ export const lessonConversations = pgTable("lesson_conversations", {
 	title: varchar({ length: 255 }).notNull(),
 	description: text(),
 	scenario: varchar({ length: 255 }).default(sql`NULL`),
+	recordingTime: integer("recording_time").default(sql`NULL`),
 });
 
 export const conversationTurns = pgTable("conversation_turns", {

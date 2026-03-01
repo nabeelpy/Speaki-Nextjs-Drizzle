@@ -58,7 +58,10 @@ export class VoiceRecorder {
       this.mediaRecorder.start()
 
       // Start live speech recognition
-      this.initLiveSpeechRecognition()
+                              setTimeout(() => {
+
+      this.initLiveSpeechRecognition() 
+                              }, 3000)
     } catch (error) {
       console.error('[v0] Error accessing microphone:', error)
       throw new Error('Microphone access denied. Please allow microphone permissions.')
@@ -97,6 +100,7 @@ export class VoiceRecorder {
     }
 
     this.speechRecognition.onerror = (event: any) => {
+      if (event.error === 'aborted' || event.error === 'no-speech') return
       console.error('[v0] Speech recognition error:', event.error)
     }
 
@@ -104,6 +108,7 @@ export class VoiceRecorder {
   }
 
   stopRecording(): Promise<Blob> {
+    console.log("Stop Record")
     return new Promise((resolve, reject) => {
       if (!this.mediaRecorder) {
         reject(new Error('Recording not started'))
