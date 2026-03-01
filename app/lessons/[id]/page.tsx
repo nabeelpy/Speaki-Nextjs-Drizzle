@@ -36,7 +36,7 @@ export default function LessonPage({
     const [selectedVoiceAgentId, setSelectedVoiceAgentId] = useState<string>(
         () => getDefaultVoiceAgentForLang(DEFAULT_LANG)?.id ?? VOICE_AGENTS[0]?.id ?? ''
     )
-    const [recordDelaySeconds, setRecordDelaySeconds] = useState<number>(4)
+    const [recordDelaySeconds, setRecordDelaySeconds] = useState<number>(1)
 
     useEffect(() => {
         params.then((p) => setLessonId(p.id))
@@ -60,13 +60,13 @@ export default function LessonPage({
     useEffect(() => {
         if (conversation) {
             const configured = conversation.recordingDelaySeconds
-            if (typeof configured === 'number' && configured > 0) {
-                setRecordDelaySeconds(configured)
-            } else {
-                const turns = conversation.turns?.length ?? 0
-                const derived = turns <= 6 ? 5 : turns <= 12 ? 7 : 10
-                setRecordDelaySeconds(derived)
-            }
+            // if (typeof configured === 'number' && configured > 0) {
+            //     setRecordDelaySeconds(configured)
+            // } else {
+            //     const turns = conversation.turns?.length ?? 0
+            //     const derived = turns <= 6 ? 5 : turns <= 12 ? 7 : 10
+            //     setRecordDelaySeconds(derived)
+            // }
         }
     }, [conversation])
 
@@ -210,7 +210,7 @@ export default function LessonPage({
                                                 <SelectValue placeholder="Select delay" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {[2, 4, 6, 8, 10].map((d) => (
+                                                {[1, 2, 3, 4, 5].map((d) => (
                                                     <SelectItem key={d} value={String(d)}>
                                                         {d} seconds
                                                     </SelectItem>

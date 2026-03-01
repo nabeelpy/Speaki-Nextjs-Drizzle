@@ -108,7 +108,6 @@ export class VoiceRecorder {
   }
 
   stopRecording(): Promise<Blob> {
-    console.log("Stop Record")
     return new Promise((resolve, reject) => {
       if (!this.mediaRecorder) {
         reject(new Error('Recording not started'))

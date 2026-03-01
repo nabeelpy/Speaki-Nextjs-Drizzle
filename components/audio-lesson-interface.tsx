@@ -235,7 +235,7 @@ export default function AudioLessonInterface({
 
             // Auto-stop timer
             const turnAtStart = conversation.turns[currentTurnIndexRef.current]
-            const recordingDuration = (turnAtStart as any)?.recordingTime ?? 10
+            const recordingDuration = conversation?.recordingTime ?? 10
             let timeLeft = recordingDuration
             setRecordingTimeLeft(timeLeft)
 
