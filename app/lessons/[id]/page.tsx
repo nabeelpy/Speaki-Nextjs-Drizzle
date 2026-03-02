@@ -123,6 +123,81 @@ export default function LessonPage({
                                 {conversation.description}
                             </p>
 
+                            {/* <div className="bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900 rounded-lg p-6 mb-8">
+                                <h3 className="font-bold text-[#0d141b] dark:text-white mb-3">
+                                    Scenario: {conversation.scenario}
+                                </h3>
+                                <p className="text-sm text-[#4c739a] dark:text-slate-400">
+                                    {conversation.turns.length} conversation turns
+                                </p>
+                            </div> */}
+
+                            <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg p-6 mb-8">
+                                <h3 className="text-left font-bold text-[#0d141b] dark:text-white mb-4">
+                                    Language, voice &amp; delay
+                                </h3>
+                                <p className="text-left text-sm text-[#4c739a] dark:text-slate-400 mb-4">
+                                    Choose the language, AI voice accent, and automatic delay before recording.
+                                </p>
+                                <div className="flex flex-wrap items-end gap-4">
+                                    <div className="flex flex-col gap-1.5 min-w-[180px]">
+                                        <Label className="text-left text-xs font-semibold text-[#4c739a] dark:text-slate-400">
+                                            Language
+                                        </Label>
+                                        <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Select language" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {SUPPORTED_LANGUAGES.map((opt) => (
+                                                    <SelectItem key={opt.code} value={opt.code}>
+                                                        {opt.nativeName} ({opt.name})
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="flex flex-col gap-1.5 min-w-[200px]">
+                                        <Label className="text-left text-xs font-semibold text-[#4c739a] dark:text-slate-400">
+                                            Voice accent
+                                        </Label>
+                                        <Select value={selectedVoiceAgentId} onValueChange={setSelectedVoiceAgentId}>
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Select voice" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {(getVoiceAgentsForLanguage(selectedLanguage).length > 0
+                                                    ? getVoiceAgentsForLanguage(selectedLanguage)
+                                                    : VOICE_AGENTS
+                                                ).map((agent) => (
+                                                    <SelectItem key={agent.id} value={agent.id}>
+                                                        {agent.accentLabel}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="flex flex-col gap-1.5 min-w-[200px]">
+                                        <Label className="text-left text-xs font-semibold text-[#4c739a] dark:text-slate-400">
+                                            Delay Before Recording
+                                        </Label>
+                                        <Select value={String(recordDelaySeconds)} onValueChange={(v) => setRecordDelaySeconds(Number(v))}>
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Select delay" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {[1, 2, 3, 4, 5].map((d) => (
+                                                    <SelectItem key={d} value={String(d)}>
+                                                        {d} seconds
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                            </div>
+
+
                             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6 mb-8 text-left">
                                 <p className="text-[#0d141b] dark:text-white font-semibold mb-4">
                                     Conversation Practice:
@@ -147,79 +222,9 @@ export default function LessonPage({
                                 </ul>
                             </div>
 
-                            <div className="bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-900 rounded-lg p-6 mb-8">
-                                <h3 className="font-bold text-[#0d141b] dark:text-white mb-3">
-                                    Scenario: {conversation.scenario}
-                                </h3>
-                                <p className="text-sm text-[#4c739a] dark:text-slate-400">
-                                    {conversation.turns.length} conversation turns
-                                </p>
-                            </div>
 
-                            <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg p-6 mb-8">
-                                <h3 className="font-bold text-[#0d141b] dark:text-white mb-4">
-                                    Language, voice &amp; delay
-                                </h3>
-                                <p className="text-sm text-[#4c739a] dark:text-slate-400 mb-4">
-                                    Choose the language, AI voice accent, and automatic delay before recording.
-                                </p>
-                                <div className="flex flex-wrap items-end gap-4">
-                                    <div className="flex flex-col gap-1.5 min-w-[180px]">
-                                        <Label className="text-xs font-semibold text-[#4c739a] dark:text-slate-400">
-                                            Language
-                                        </Label>
-                                        <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
-                                            <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="Select language" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {SUPPORTED_LANGUAGES.map((opt) => (
-                                                    <SelectItem key={opt.code} value={opt.code}>
-                                                        {opt.nativeName} ({opt.name})
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="flex flex-col gap-1.5 min-w-[200px]">
-                                        <Label className="text-xs font-semibold text-[#4c739a] dark:text-slate-400">
-                                            Voice accent
-                                        </Label>
-                                        <Select value={selectedVoiceAgentId} onValueChange={setSelectedVoiceAgentId}>
-                                            <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="Select voice" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {(getVoiceAgentsForLanguage(selectedLanguage).length > 0
-                                                    ? getVoiceAgentsForLanguage(selectedLanguage)
-                                                    : VOICE_AGENTS
-                                                ).map((agent) => (
-                                                    <SelectItem key={agent.id} value={agent.id}>
-                                                        {agent.accentLabel}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="flex flex-col gap-1.5 min-w-[200px]">
-                                        <Label className="text-xs font-semibold text-[#4c739a] dark:text-slate-400">
-                                            Delay Before Recording
-                                        </Label>
-                                        <Select value={String(recordDelaySeconds)} onValueChange={(v) => setRecordDelaySeconds(Number(v))}>
-                                            <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="Select delay" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {[1, 2, 3, 4, 5].map((d) => (
-                                                    <SelectItem key={d} value={String(d)}>
-                                                        {d} seconds
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                </div>
-                            </div>
+
+
 
                             <button
                                 onClick={() => setHasStarted(true)}
