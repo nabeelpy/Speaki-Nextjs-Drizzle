@@ -33,9 +33,9 @@ export default function Header() {
             Courses
           </Link>
           <Link
-            href="/quick-start"
+            href="/languages"
             className={`text-sm font-medium leading-normal transition-colors ${
-              pathname?.startsWith('/quick-start')
+              pathname?.startsWith('/languages')
                 ? 'text-[#137fec]'
                 : 'text-[#0d141b] dark:text-slate-300 hover:text-[#137fec]'
             }`}
