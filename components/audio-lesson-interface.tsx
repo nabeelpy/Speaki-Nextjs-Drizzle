@@ -35,6 +35,10 @@ const DEFAULT_LANG = 'en-US'
 const USER_ROLE_ALIASES = ['passenger', 'user', 'you', 'student', 'customer', 'learner', 'friend']
 const AI_ROLE_ALIASES = ['officer', 'ai', 'agent', 'system', 'teacher', 'assistant', 'me']
 
+// Warm-up utterance: a silent/short string that primes the TTS engine
+// without being heard — spoken at volume 0 in the browser
+const WARMUP_TEXT = ' '
+
 function getTurnText(turn: ConversationTurn | undefined, lang: string): string {
     if (!turn) return ''
     const byLang = turn.textByLang
@@ -66,6 +70,10 @@ function normalizeRole(r?: string) {
     return (r ?? '').trim().toLowerCase()
 }
 
+// How long (ms) to show the intro/warm-up screen before starting the lesson.
+// This gives the browser time to load voices in the background.
+const INTRO_DURATION_MS = 3000
+
 export default function AudioLessonInterface({
                                                  conversation,
                                                  onComplete,
@@ -94,6 +102,15 @@ export default function AudioLessonInterface({
     const [userRoleNorm, setUserRoleNorm] = useState<string | null>(null)
     const [aiRoleNorm, setAiRoleNorm] = useState<string | null>(null)
 
+    // ── Voice-readiness state ─────────────────────────────────────────────────
+    // `voicesReady` flips true once we've confirmed voices are loaded OR the
+    // fallback timeout fires so we never block the lesson indefinitely.
+    const [voicesReady, setVoicesReady] = useState(false)
+    // `introPhase` shows a brief "get ready" screen while voices load.
+    // It's dismissed either when voices are confirmed ready or after INTRO_DURATION_MS.
+    const [introPhase, setIntroPhase] = useState(true)
+    const [introCountdown, setIntroCountdown] = useState(Math.ceil(INTRO_DURATION_MS / 1000))
+
     // ── Refs for everything that closures need to read synchronously ──
     const voiceRecorderRef = useRef<VoiceRecorder>(new VoiceRecorder())
     const textToSpeechRef = useRef<TextToSpeech>(new TextToSpeech())
@@ -103,8 +120,10 @@ export default function AudioLessonInterface({
     const countdownRef = useRef<NodeJS.Timeout | null>(null)
     const countdownTurnRef = useRef<number | null>(null)
     const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
+    const introTimerRef = useRef<NodeJS.Timeout | null>(null)
+    const warmupFiredRef = useRef(false)
 
-    // Sync refs — keep in lock-step with state so interval/timeout closures always see fresh values
+    // Sync refs
     const currentTurnIndexRef = useRef(0)
     const isRecordingRef = useRef(false)
     const isListeningRef = useRef(false)
@@ -124,6 +143,72 @@ export default function AudioLessonInterface({
     useEffect(() => { userRoleNormRef.current = userRoleNorm }, [userRoleNorm])
     useEffect(() => { aiRoleNormRef.current = aiRoleNorm }, [aiRoleNorm])
     useEffect(() => { conversationEndedRef.current = conversationEnded }, [conversationEnded])
+
+    // ── Voice-readiness bootstrap ─────────────────────────────────────────────
+    useEffect(() => {
+        const markReady = () => {
+            if (voicesReady) return
+            setVoicesReady(true)
+            // Fire a silent warm-up utterance so the engine is fully primed
+            // before the first real sentence plays.
+            if (!warmupFiredRef.current && typeof window !== 'undefined' && window.speechSynthesis) {
+                warmupFiredRef.current = true
+                const utt = new SpeechSynthesisUtterance(WARMUP_TEXT)
+                utt.volume = 0
+                utt.lang = languageRef.current
+                window.speechSynthesis.speak(utt)
+            }
+        }
+
+        // Strategy 1: voices already available synchronously
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+            const immediate = window.speechSynthesis.getVoices()
+            if (immediate.length > 0) {
+                markReady()
+            } else {
+                // Strategy 2: wait for the voiceschanged event
+                window.speechSynthesis.addEventListener('voiceschanged', markReady, { once: true })
+            }
+        }
+
+        // Strategy 3: hard fallback — never block more than INTRO_DURATION_MS
+        const fallback = setTimeout(() => markReady(), INTRO_DURATION_MS)
+
+        return () => {
+            clearTimeout(fallback)
+            if (typeof window !== 'undefined' && window.speechSynthesis) {
+                window.speechSynthesis.removeEventListener('voiceschanged', markReady)
+            }
+        }
+    }, [])
+
+    // ── Intro phase countdown & dismissal ────────────────────────────────────
+    useEffect(() => {
+        // Tick the visible countdown
+        const tick = setInterval(() => {
+            setIntroCountdown((prev) => Math.max(0, prev - 1))
+        }, 1000)
+
+        // Dismiss intro after INTRO_DURATION_MS regardless
+        introTimerRef.current = setTimeout(() => {
+            clearInterval(tick)
+            setIntroPhase(false)
+        }, INTRO_DURATION_MS)
+
+        return () => {
+            clearInterval(tick)
+            if (introTimerRef.current) clearTimeout(introTimerRef.current)
+        }
+    }, [])
+
+    // Also dismiss intro early if voices become ready before the timer fires
+    useEffect(() => {
+        if (voicesReady && introPhase) {
+            // Small grace period so the warm-up utterance has time to register
+            const grace = setTimeout(() => setIntroPhase(false), 400)
+            return () => clearTimeout(grace)
+        }
+    }, [voicesReady, introPhase])
 
     // Derive role norms from conversation
     useEffect(() => {
@@ -160,7 +245,6 @@ export default function AudioLessonInterface({
     const hasVoiceForCurrentLang = hasVoiceForLang(browserVoices, language)
     const showEnglishTranslation = language.split('-')[0].toLowerCase() !== 'en'
 
-    // Keep selectedVoiceAgent ref in sync
     useEffect(() => { selectedVoiceAgentRef.current = selectedVoiceAgent }, [selectedVoiceAgent])
 
     // Load browser voices
@@ -171,12 +255,10 @@ export default function AudioLessonInterface({
         })
     }, [])
 
-    // Keep speech recognition language in sync
     useEffect(() => {
         voiceRecorderRef.current.setLanguage(language)
     }, [language])
 
-    // When language changes, switch to a valid voice agent
     useEffect(() => {
         const current = VOICE_AGENTS.find((a) => a.id === voiceAgentId)
         if (current && current.lang.split('-')[0] !== language.split('-')[0]) {
@@ -185,11 +267,12 @@ export default function AudioLessonInterface({
         }
     }, [language])
 
-    // Elapsed timer
+    // Elapsed timer — only starts after intro phase is done
     useEffect(() => {
+        if (introPhase) return
         timerRef.current = setInterval(() => setElapsedTime((prev) => prev + 1), 1000)
         return () => { if (timerRef.current) clearInterval(timerRef.current) }
-    }, [])
+    }, [introPhase])
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -209,7 +292,7 @@ export default function AudioLessonInterface({
         setCountdownLeft(0)
     }
 
-    // ── Core functions (use refs, never state, for async-safe reads) ─────────
+    // ── Core functions ────────────────────────────────────────────────────────
 
     const startRecording = async () => {
         if (isRecordingRef.current) return
@@ -233,8 +316,6 @@ export default function AudioLessonInterface({
             voiceRecorderRef.current.setLanguage(languageRef.current)
             await voiceRecorderRef.current.startRecording()
 
-            // Auto-stop timer
-            const turnAtStart = conversation.turns[currentTurnIndexRef.current]
             const recordingDuration = conversation?.recordingTime ?? 10
             let timeLeft = recordingDuration
             setRecordingTimeLeft(timeLeft)
@@ -264,7 +345,6 @@ export default function AudioLessonInterface({
         if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null }
         setRecordingTimeLeft(null)
 
-        // Snapshot refs NOW before any awaits
         const turnIndex = currentTurnIndexRef.current
         const turn = conversation.turns[turnIndex]
         const transcript = liveTranscriptRef.current
@@ -292,13 +372,11 @@ export default function AudioLessonInterface({
 
             setMessages((prev) => [...prev, userMessage])
 
-            // Last turn?
             if (turnIndex >= conversation.turns.length - 1) {
                 setTimeout(() => endConversation(), 1000)
                 return
             }
 
-            // Advance to next AI turn
             const nextTurnIdx = turnIndex + 1
             const nextTurn = conversation.turns[nextTurnIdx]
 
@@ -382,7 +460,6 @@ export default function AudioLessonInterface({
                 if (nextTurn && isUserTurnByIndex(nextIdx)) {
                     setTimeout(() => startCountdown(nextIdx), 0)
                 } else if (nextTurn) {
-                    // Back-to-back AI turns
                     setTimeout(() => {
                         playAIMessage(getTurnText(nextTurn, languageRef.current), nextTurn.role, nextIdx)
                     }, 500)
@@ -391,11 +468,13 @@ export default function AudioLessonInterface({
         })
     }
 
-    // Play initial AI message (only once)
+    // Play initial AI message — waits for intro phase to end
     useEffect(() => {
+        if (introPhase) return           // wait until intro is dismissed
         if (hasInitialized.current) return
         hasInitialized.current = true
 
+        // Small buffer after intro dismissal so the warm-up utterance has cleared
         setTimeout(() => {
             const firstTurn = conversation.turns[0]
             if (!firstTurn) return
@@ -412,8 +491,8 @@ export default function AudioLessonInterface({
             if (firstIsAI) {
                 playAIMessage(getTurnText(firstTurn, languageRef.current), firstTurn.role, 0)
             }
-        }, 500)
-    }, [])
+        }, 300)
+    }, [introPhase])
 
     const formatTime = (seconds: number) => {
         const mins = Math.floor(seconds / 60)
@@ -476,7 +555,110 @@ export default function AudioLessonInterface({
         setIsProcessing(false)
     }
 
-    // ── Render ────────────────────────────────────────────────────────────────
+    // ── Intro / warm-up screen ────────────────────────────────────────────────
+    if (introPhase) {
+        const participants = [...new Set(conversation.turns.map((turn) => turn.role))]
+        return (
+            <div className="w-full max-w-4xl mx-auto">
+                {/* Language & Voice selectors — visible during intro so user can switch early */}
+                <div className="flex flex-wrap items-end gap-4 mb-6 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <div className="flex flex-col gap-1.5 min-w-[180px]">
+                        <Label className="text-xs font-semibold text-[#4c739a] dark:text-slate-400">
+                            {t(uiLocale, 'language')}
+                        </Label>
+                        <Select value={language} onValueChange={setLanguage}>
+                            <SelectTrigger className="w-full">
+                                <SelectValue placeholder={t(uiLocale, 'selectLanguage')} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {SUPPORTED_LANGUAGES.map((opt) => (
+                                    <SelectItem key={opt.code} value={opt.code}>
+                                        {opt.nativeName} ({opt.name})
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="flex flex-col gap-1.5 min-w-[200px]">
+                        <Label className="text-xs font-semibold text-[#4c739a] dark:text-slate-400">
+                            {t(uiLocale, 'voiceAccent')}
+                        </Label>
+                        <Select value={voiceAgentId} onValueChange={setVoiceAgentId}>
+                            <SelectTrigger className="w-full">
+                                <SelectValue placeholder={t(uiLocale, 'selectVoice')} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {(voiceAgentsForLang.length > 0 ? voiceAgentsForLang : VOICE_AGENTS).map((agent) => (
+                                    <SelectItem key={agent.id} value={agent.id}>
+                                        {agent.accentLabel}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+
+                {/* Intro card */}
+                <div className="bg-white dark:bg-slate-900 border-2 border-[#137fec]/30 dark:border-[#137fec]/50 rounded-xl p-8 text-center shadow-lg">
+                    {/* Animated voice-loading indicator */}
+                    <div className="flex justify-center mb-6">
+                        <div className="relative w-20 h-20">
+                            <div className={`absolute inset-0 rounded-full border-4 transition-colors duration-500 ${voicesReady ? 'border-green-400' : 'border-[#137fec]/30 border-t-[#137fec] animate-spin'}`} />
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                {voicesReady ? (
+                                    <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                ) : (
+                                    <svg className="w-8 h-8 text-[#137fec]" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M12 3a9 9 0 100 18A9 9 0 0012 3zm-1 13v-2h2v2h-2zm0-4V7h2v5h-2z" />
+                                    </svg>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    <h2 className="text-2xl font-bold text-[#0d141b] dark:text-white mb-1">
+                        {conversation.scenario}
+                    </h2>
+                    <p className="text-[#4c739a] dark:text-slate-400 mb-6 text-sm">
+                        {conversation.turns.length} turns • {participants.join(' & ')}
+                    </p>
+
+                    {/* Voice status */}
+                    <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold mb-6 transition-colors ${voicesReady ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-blue-50 dark:bg-blue-900/20 text-[#137fec]'}`}>
+                        <div className={`w-2 h-2 rounded-full ${voicesReady ? 'bg-green-500' : 'bg-[#137fec] animate-pulse'}`} />
+                        {voicesReady ? 'Voices ready' : 'Loading voices…'}
+                    </div>
+
+                    {/* Quick instructions */}
+                    <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-5 text-left mb-6 space-y-3">
+                        <h3 className="font-bold text-[#0d141b] dark:text-white text-sm mb-3">How this lesson works</h3>
+                        {[
+                            { icon: '🔊', text: 'The AI will speak first — listen carefully.' },
+                            { icon: '🎙️', text: 'When it\'s your turn, a countdown starts then recording begins automatically.' },
+                            { icon: '✋', text: 'You can also tap "Start Recording" to respond at any time.' },
+                            { icon: '📝', text: 'Your transcript appears live while you speak.' },
+                        ].map(({ icon, text }) => (
+                            <div key={text} className="flex items-start gap-3">
+                                <span className="text-lg leading-5">{icon}</span>
+                                <p className="text-sm text-[#4c739a] dark:text-slate-300">{text}</p>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Auto-start countdown */}
+                    <p className="text-xs text-[#4c739a] dark:text-slate-500">
+                        {voicesReady
+                            ? 'Starting in a moment…'
+                            : `Starting in ${introCountdown}s${introCountdown > 0 ? '…' : ''}`}
+                    </p>
+                </div>
+            </div>
+        )
+    }
+
+    // ── Render (conversation ended) ───────────────────────────────────────────
 
     if (conversationEnded) {
         return (
@@ -597,6 +779,8 @@ export default function AudioLessonInterface({
             </div>
         )
     }
+
+    // ── Render (active lesson) ────────────────────────────────────────────────
 
     return (
         <div className="w-full max-w-4xl mx-auto">
