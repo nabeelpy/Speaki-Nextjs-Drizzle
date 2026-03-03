@@ -58,10 +58,7 @@ export class VoiceRecorder {
       this.mediaRecorder.start()
 
       // Start live speech recognition
-                              setTimeout(() => {
-
-      this.initLiveSpeechRecognition() 
-                              }, 3000)
+      this.initLiveSpeechRecognition()
     } catch (error) {
       console.error('[v0] Error accessing microphone:', error)
       throw new Error('Microphone access denied. Please allow microphone permissions.')

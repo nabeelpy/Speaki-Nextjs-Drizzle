@@ -35,7 +35,7 @@ export default function CoursesBrowse({ basePath = '' }: CoursesBrowseProps) {
   const [search, setSearch] = useState<string | null>(null)
 
   const fetcher = (url: string) => fetch(url).then((r) => r.json())
-  const { data: categoriesRes } = useSWR('/api/courses/categories', fetcher)
+  const { data: categoriesRes } = useSWR('/api/course-categories', fetcher)
   const categories: string[] = (categoriesRes?.data as string[]) ?? []
 
   const clearFilters = () => {
