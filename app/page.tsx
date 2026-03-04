@@ -1,22 +1,34 @@
-'use client'
-import Header from '@/components/header'
-import Hero from '@/components/hero'
-import CoursesBrowse from '@/components/courses-browse'
-import ProgressSection from '@/components/progress-section'
-import MobileNav from '@/components/mobile-nav'
+// Pure Server Component — zero client JS at the page level
+import Header               from '@/components/layout/Header'
+import Footer               from '@/components/layout/Footer'
+import HeroSection          from '@/components/sections/HeroSection'
+import StatsSection         from '@/components/sections/StatsSection'
+import HowItWorksSection    from '@/components/sections/HowItWorksSection'
+import CoursesSection       from '@/components/sections/CoursesSection'
+import FeaturesSection      from '@/components/sections/FeaturesSection'
+import TestimonialsSection  from '@/components/sections/TestimonialsSection'
+import PricingSection       from '@/components/sections/PricingSection'
+import FaqSection           from '@/components/sections/FaqSection'
+import CtaBanner            from '@/components/sections/CtaBanner'
+// app/layout.tsx
+import './styles/main.css'
 
-export default function Page() {
-  return (
-    <div className="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
-      <div className="layout-container flex h-full grow flex-col">
-        <Header />
-        <main className="flex flex-col items-center w-full max-w-[1200px] mx-auto px-4 lg:px-10 py-10 pb-24 md:pb-10">
-          {/* <Hero /> */}
-          <CoursesBrowse />
-          {/* <ProgressSection /> */}
-        </main>
-        <MobileNav />
-      </div>
-    </div>
-  )
+export default function HomePage() {
+    return (
+        <>
+            <Header />
+            <main>
+                <HeroSection />
+                <StatsSection />
+                <HowItWorksSection />
+                <CoursesSection />
+                <FeaturesSection />
+                <TestimonialsSection />
+                <PricingSection />
+                <FaqSection />
+                <CtaBanner />
+            </main>
+            <Footer />
+        </>
+    )
 }
