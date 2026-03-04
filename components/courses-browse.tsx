@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import useSWR from 'swr'
 import CourseGrid from './course-grid'
+import LanguageSelector from './language-selector'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -33,6 +34,7 @@ export default function CoursesBrowse({ basePath = '' }: CoursesBrowseProps) {
   const [level, setLevel] = useState<string | null>('A1')
   const [category, setCategory] = useState<string | null>(null)
   const [search, setSearch] = useState<string | null>(null)
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('en')
 
   const fetcher = (url: string) => fetch(url).then((r) => r.json())
   const { data: categoriesRes } = useSWR('/api/course-categories', fetcher)
@@ -45,7 +47,11 @@ export default function CoursesBrowse({ basePath = '' }: CoursesBrowseProps) {
   }
 
   return (
-    <div className="w-full flex gap-6">
+    <div className="w-full flex flex-col gap-6">
+      {/* Language Selector - At the top */}
+      <LanguageSelector onLanguageChange={setSelectedLanguage} />
+
+      <div className="w-full flex gap-6">
       {/* Desktop sidebar */}
       <aside className="hidden md:block w-64 flex-shrink-0">
         <div className="bg-white dark:bg-slate-900 border border-[#e7edf3] dark:border-slate-800 rounded-lg p-4 space-y-6">
@@ -184,6 +190,7 @@ export default function CoursesBrowse({ basePath = '' }: CoursesBrowseProps) {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+        </div>
         </div>
 
         {/* Grid */}
