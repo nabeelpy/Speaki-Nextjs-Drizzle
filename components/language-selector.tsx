@@ -9,6 +9,13 @@ const LANGUAGES = [
   { code: 'fr', name: 'French', flag: '🇫🇷', voiceKeywords: ['french', 'fr-FR', 'fr-CA', 'thomas', 'amélie', 'amelie'] },
   { code: 'es', name: 'Spanish', flag: '🇪🇸', voiceKeywords: ['spanish', 'es-ES', 'es-US', 'es-MX', 'mónica', 'monica', 'jorge'] },
   { code: 'ar', name: 'Arabic', flag: '🇸🇦', voiceKeywords: ['arabic', 'ar-SA', 'ar-EG', 'maged', 'tarik', 'lana'] },
+  // ✅ Add Chinese
+  {
+    code: "zh",
+    name: "Chinese",
+    flag: "🇨🇳",
+    voiceKeywords: ["chinese", "mandarin", "zh-CN", "zh-TW", "zh-HK", "ting-ting", "mei-jia", "sin-ji"]
+  },
 ] as const
 
 const STORAGE_KEY = 'selected-language-code'

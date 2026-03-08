@@ -13,6 +13,25 @@ const LANGUAGES = [
   { code: "fr", name: "French", flag: "🇫🇷", voiceKeywords: ["french", "fr-FR", "fr-CA", "thomas", "amélie", "amelie"] },
   { code: "es", name: "Spanish", flag: "🇪🇸", voiceKeywords: ["spanish", "es-ES", "es-US", "es-MX", "mónica", "monica", "jorge"] },
   { code: "ar", name: "Arabic", flag: "🇸🇦", voiceKeywords: ["arabic", "ar-SA", "ar-EG", "maged", "tarik", "lana"] },
+    // ✅ ADD CHINESE
+    {
+        code: "zh",
+        name: "Chinese",
+        flag: "🇨🇳",
+        voiceKeywords: [
+            "chinese",
+            "mandarin",
+            "zh-CN",
+            "zh-TW",
+            "zh-HK",
+            "ting",
+            "mei",
+            "li",
+            "hui",
+            "xiaoxiao",
+            "yunxi"
+        ]
+    },
 ];
 
 // Step screenshots as SVG illustrations
@@ -334,7 +353,7 @@ function LanguageStatusPanel({ voices, loading, reload }) {
           <Alert className="mt-2 border-emerald-200 bg-emerald-50">
             <CheckCircle2 size={14} className="text-emerald-600" />
             <AlertDescription className="text-emerald-700 text-xs ml-1">
-              All 4 languages detected on your device. You're ready to go!
+              All 5 languages detected on your device. You're ready to go!
             </AlertDescription>
           </Alert>
         )}
@@ -402,7 +421,7 @@ const guides = {
       },
       {
         title: 'Click "Add voices" and select languages',
-        description: "In the Text-to-Speech section, click \"Add voices\". Check French, Spanish, and Arabic then click Add.",
+        description: "In the Text-to-Speech section, click \"Add voices\". Check French, Spanish, Chinese and Arabic then click Add.",
         Screenshot: ScreenshotWindows, step: 2,
       },
       {
@@ -424,7 +443,7 @@ const guides = {
       },
       {
         title: 'Click "Manage Voices…" and download languages',
-        description: "Click the arrow next to System Voice, then Manage Voices. Click the download button next to French, Spanish, and Arabic.",
+        description: "Click the arrow next to System Voice, then Manage Voices. Click the download button next to French, Spanish, Chinese and Arabic.",
         Screenshot: ScreenshotMac, step: 2,
       },
       {
@@ -446,7 +465,7 @@ const guides = {
       },
       {
         title: "Tap your TTS engine → Install voice data",
-        description: "Select Google Text-to-Speech (recommended). Tap \"Install voice data\" and choose French, Spanish, and Arabic.",
+        description: "Select Google Text-to-Speech (recommended). Tap \"Install voice data\" and choose French, Spanish, Chinese and Arabic.",
         Screenshot: ScreenshotAndroid, step: 2,
       },
     ],
@@ -480,7 +499,7 @@ const guides = {
       },
       {
         title: "Add languages and download voice engines",
-        description: "Under \"Text-to-Speech voice\", click the dropdown and select \"Add languages\". Choose French, Spanish, and Arabic.",
+        description: "Under \"Text-to-Speech voice\", click the dropdown and select \"Add languages\". Choose French, Spanish, Chinese and Arabic.",
         Screenshot: ScreenshotWindows, step: 2,
       },
     ],
@@ -505,7 +524,7 @@ export default function VoiceInstallGuide() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Install Voice Packages</h1>
           <p className="text-slate-500 mt-1 text-sm leading-relaxed">
-            Our app uses your device's built-in text-to-speech engine to read content in English, French, Spanish, and Arabic.
+            Our app uses your device's built-in text-to-speech engine to read content in English, French, Spanish, Chinese and Arabic.
             Follow the steps below for your operating system.
           </p>
         </div>

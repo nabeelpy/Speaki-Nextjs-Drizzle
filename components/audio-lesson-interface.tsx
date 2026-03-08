@@ -92,6 +92,27 @@ export default function AudioLessonInterface({
     const [userRoleNorm, setUserRoleNorm] = useState<string | null>(null)
     const [aiRoleNorm, setAiRoleNorm] = useState<string | null>(null)
 
+    const STORAGE_KEY = 'selected-language-code'
+    const excludedLanguages = ['fr-FR', 'es-ES', 'ar-SA', 'es-US', 'zh-CH', 'zh-CN']
+
+    const [savedLanguage, setSavedLanguage] = useState<string | null>(null)
+    useEffect(() => {
+        const saved = localStorage.getItem(STORAGE_KEY)
+        setSavedLanguage(saved)
+    }, [])
+
+    const getLanguages = () => {
+        const codes = Array.from(new Set(browserVoices.map(v => v.lang)))
+
+        // If English → show all except excluded
+        if (!savedLanguage || savedLanguage === 'en') {
+            return codes.filter(code => !excludedLanguages.includes(code))
+        }
+
+        // If another language → show only that one
+        return codes.filter(code => code.startsWith(savedLanguage))
+    }
+
     // ── Refs for everything that closures need to read synchronously ──
     const voiceRecorderRef = useRef<VoiceRecorder>(new VoiceRecorder())
     const textToSpeechRef = useRef<TextToSpeech>(new TextToSpeech())
@@ -622,10 +643,7 @@ export default function AudioLessonInterface({
                             <SelectValue placeholder={t(uiLocale, 'selectLanguage')} />
                         </SelectTrigger>
                         <SelectContent>
-                            {(browserVoices.length > 0
-                                ? Array.from(new Set(browserVoices.map(v => v.lang)))
-                                : SUPPORTED_LANGUAGES.map(opt => opt.code)
-                            ).map((code) => (
+                            {getLanguages().map((code) => (
                                 <SelectItem key={code} value={code}>
                                     {code}
                                 </SelectItem>

@@ -37,10 +37,43 @@ export default function LessonPage({
         () => getDefaultVoiceAgentForLang(DEFAULT_LANG)?.id ?? VOICE_AGENTS[0]?.id ?? ''
     )
     const [recordDelaySeconds, setRecordDelaySeconds] = useState<number>(1)
+    const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
+
+    const STORAGE_KEY = 'selected-language-code'
+    const excludedLanguages = ['fr-FR', 'es-ES', 'ar-SA', 'es-US', 'zh-CH', 'zh-CN']
+
+    const [savedLanguage, setSavedLanguage] = useState<string | null>(null)
+    useEffect(() => {
+        const saved = localStorage.getItem(STORAGE_KEY)
+        setSavedLanguage(saved)
+    }, [])
+
+    const getLanguages = () => {
+        const codes = Array.from(new Set(voices.map(v => v.lang)))
+
+        // If English → show all except excluded
+        if (!savedLanguage || savedLanguage === 'en') {
+            return codes.filter(code => !excludedLanguages.includes(code))
+        }
+
+        // If another language → show only that one
+        return codes.filter(code => code.startsWith(savedLanguage))
+    }
 
     useEffect(() => {
         params.then((p) => setLessonId(p.id))
     }, [params])
+
+    // Load speech synthesis voices
+    useEffect(() => {
+
+        const loadVoices = () => {
+            setVoices(window.speechSynthesis.getVoices())
+        }
+
+        loadVoices()
+        window.speechSynthesis.onvoiceschanged = loadVoices
+    }, [])
 
     // When language changes, switch to a valid voice agent for that language
     useEffect(() => {
@@ -90,6 +123,7 @@ export default function LessonPage({
     }
 
     return (
+
         <div className="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
             <div className="layout-container flex h-full grow flex-col">
                 <Header />
@@ -148,22 +182,15 @@ export default function LessonPage({
                                             <SelectTrigger className="w-full">
                                                 <SelectValue placeholder="Select language" />
                                             </SelectTrigger>
+
                                             <SelectContent>
-                                                {(typeof window !== 'undefined' ? window.speechSynthesis?.getVoices() || [] : [])
-                                                    .reduce((acc: string[], v: SpeechSynthesisVoice) => {
-                                                        const code = v.lang
-                                                        if (!acc.includes(code)) acc.push(code)
-                                                        return acc
-                                                    }, [])
-                                                    .map((code: string) => (
-                                                        <SelectItem key={code} value={code}>
-                                                            {code}
-                                                        </SelectItem>
-                                                    ))
-                                                }
+                                                {getLanguages().map((code) => (
+                                                    <SelectItem key={code} value={code}>
+                                                        {code}
+                                                    </SelectItem>
+                                                ))}
                                             </SelectContent>
-                                        </Select>
-                                    </div>
+                                        </Select>                                    </div>
                                     <div className="flex flex-col gap-1.5 min-w-[200px]">
                                         <Label className="text-left text-xs font-semibold text-[#4c739a] dark:text-slate-400">
                                             Voice accent
@@ -173,7 +200,7 @@ export default function LessonPage({
                                                 <SelectValue placeholder="Select voice" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {(typeof window !== 'undefined' ? window.speechSynthesis?.getVoices() || [] : [])
+                                                {voices
                                                     .filter((v: SpeechSynthesisVoice) => v.lang.split('-')[0] === selectedLanguage.split('-')[0])
                                                     .map((v: SpeechSynthesisVoice) => (
                                                         <SelectItem key={`${v.name}|${v.lang}`} value={`${v.name}|${v.lang}`}>
