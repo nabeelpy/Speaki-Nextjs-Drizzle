@@ -149,11 +149,18 @@ export default function LessonPage({
                                                 <SelectValue placeholder="Select language" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {SUPPORTED_LANGUAGES.map((opt) => (
-                                                    <SelectItem key={opt.code} value={opt.code}>
-                                                        {opt.nativeName} ({opt.name})
-                                                    </SelectItem>
-                                                ))}
+                                                {(typeof window !== 'undefined' ? window.speechSynthesis?.getVoices() || [] : [])
+                                                    .reduce((acc: string[], v: SpeechSynthesisVoice) => {
+                                                        const code = v.lang
+                                                        if (!acc.includes(code)) acc.push(code)
+                                                        return acc
+                                                    }, [])
+                                                    .map((code: string) => (
+                                                        <SelectItem key={code} value={code}>
+                                                            {code}
+                                                        </SelectItem>
+                                                    ))
+                                                }
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -166,14 +173,14 @@ export default function LessonPage({
                                                 <SelectValue placeholder="Select voice" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {(getVoiceAgentsForLanguage(selectedLanguage).length > 0
-                                                    ? getVoiceAgentsForLanguage(selectedLanguage)
-                                                    : VOICE_AGENTS
-                                                ).map((agent) => (
-                                                    <SelectItem key={agent.id} value={agent.id}>
-                                                        {agent.accentLabel}
-                                                    </SelectItem>
-                                                ))}
+                                                {(typeof window !== 'undefined' ? window.speechSynthesis?.getVoices() || [] : [])
+                                                    .filter((v: SpeechSynthesisVoice) => v.lang.split('-')[0] === selectedLanguage.split('-')[0])
+                                                    .map((v: SpeechSynthesisVoice) => (
+                                                        <SelectItem key={`${v.name}|${v.lang}`} value={`${v.name}|${v.lang}`}>
+                                                            {v.name} ({v.lang})
+                                                        </SelectItem>
+                                                    ))
+                                                }
                                             </SelectContent>
                                         </Select>
                                     </div>

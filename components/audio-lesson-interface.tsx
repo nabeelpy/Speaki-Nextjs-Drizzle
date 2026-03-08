@@ -84,9 +84,7 @@ export default function AudioLessonInterface({
     const [isPlayingCombined, setIsPlayingCombined] = useState(false)
     const [playbackProgress, setPlaybackProgress] = useState(0)
     const [language, setLanguage] = useState(defaultLanguage)
-    const [voiceAgentId, setVoiceAgentId] = useState<string>(
-        defaultVoiceAgentId ?? getDefaultVoiceAgentForLang(defaultLanguage)?.id ?? VOICE_AGENTS[0]?.id ?? ''
-    )
+    const [voiceAgentId, setVoiceAgentId] = useState<string>(defaultVoiceAgentId ?? '')
     const [browserVoices, setBrowserVoices] = useState<SpeechSynthesisVoice[]>([])
     const [countdownActive, setCountdownActive] = useState(false)
     const [countdownLeft, setCountdownLeft] = useState(0)
@@ -155,19 +153,29 @@ export default function AudioLessonInterface({
         (!AI_ROLE_ALIASES.includes(roleNorm) && currentTurnIndex % 2 === 1)
 
     const uiLocale = getUILocale(language)
-    const selectedVoiceAgent = VOICE_AGENTS.find((a) => a.id === voiceAgentId) ?? getDefaultVoiceAgentForLang(language)
-    const voiceAgentsForLang = getVoiceAgentsForLanguage(language)
     const hasVoiceForCurrentLang = hasVoiceForLang(browserVoices, language)
     const showEnglishTranslation = language.split('-')[0].toLowerCase() !== 'en'
 
-    // Keep selectedVoiceAgent ref in sync
-    useEffect(() => { selectedVoiceAgentRef.current = selectedVoiceAgent }, [selectedVoiceAgent])
+    // Keep selectedVoice ref in sync (device voice)
+    useEffect(() => {
+        const key = voiceAgentId
+        const v = browserVoices.find((bv) => `${bv.name}|${bv.lang}` === key) || null
+        selectedVoiceAgentRef.current = undefined
+        // Reuse selectedVoiceAgentRef to carry actual SpeechSynthesisVoice via 'as any'
+        ;(selectedVoiceAgentRef as any).currentVoice = v
+    }, [voiceAgentId, browserVoices])
 
     // Load browser voices
     useEffect(() => {
         loadBrowserVoices().then((voices) => {
             setBrowserVoices(voices)
             textToSpeechRef.current.setBrowserVoices(voices)
+            // Initialize default voice key for current language
+            if (!voiceAgentId && voices.length > 0) {
+                const byLang = voices.find(v => v.lang.toLowerCase().startsWith(language.toLowerCase()))
+                const first = byLang || voices[0]
+                setVoiceAgentId(`${first.name}|${first.lang}`)
+            }
         })
     }, [])
 
@@ -176,14 +184,16 @@ export default function AudioLessonInterface({
         voiceRecorderRef.current.setLanguage(language)
     }, [language])
 
-    // When language changes, switch to a valid voice agent
+    // When language changes, switch to a valid device voice for that language
     useEffect(() => {
-        const current = VOICE_AGENTS.find((a) => a.id === voiceAgentId)
-        if (current && current.lang.split('-')[0] !== language.split('-')[0]) {
-            const defaultAgent = getDefaultVoiceAgentForLang(language)
-            if (defaultAgent) setVoiceAgentId(defaultAgent.id)
+        if (browserVoices.length === 0) return
+        const currentVoice = browserVoices.find(v => `${v.name}|${v.lang}` === voiceAgentId)
+        const sameLang = currentVoice && currentVoice.lang.split('-')[0] === language.split('-')[0]
+        if (!sameLang) {
+            const byLang = browserVoices.find(v => v.lang.split('-')[0] === language.split('-')[0])
+            if (byLang) setVoiceAgentId(`${byLang.name}|${byLang.lang}`)
         }
-    }, [language])
+    }, [language, browserVoices, voiceAgentId])
 
     // Elapsed timer
     useEffect(() => {
@@ -368,7 +378,8 @@ export default function AudioLessonInterface({
 
         textToSpeechRef.current.speak(message, {
             lang: languageRef.current,
-            voiceAgent: selectedVoiceAgentRef.current ?? undefined,
+            // Use the exact browser voice if available (stored on the ref as any.currentVoice)
+            voice: (selectedVoiceAgentRef as any).currentVoice ?? undefined,
             onEnd: () => {
                 isListeningRef.current = false
                 setIsListening(false)
@@ -450,7 +461,7 @@ export default function AudioLessonInterface({
                 await new Promise<void>((resolve) => {
                     textToSpeechRef.current.speak(getTurnText(turn, language), {
                         lang: language,
-                        voiceAgent: selectedVoiceAgent ?? undefined,
+                        voice: (selectedVoiceAgentRef as any).currentVoice ?? undefined,
                         onEnd: () => resolve(),
                     })
                 })
@@ -611,9 +622,12 @@ export default function AudioLessonInterface({
                             <SelectValue placeholder={t(uiLocale, 'selectLanguage')} />
                         </SelectTrigger>
                         <SelectContent>
-                            {SUPPORTED_LANGUAGES.map((opt) => (
-                                <SelectItem key={opt.code} value={opt.code}>
-                                    {opt.nativeName} ({opt.name})
+                            {(browserVoices.length > 0
+                                ? Array.from(new Set(browserVoices.map(v => v.lang)))
+                                : SUPPORTED_LANGUAGES.map(opt => opt.code)
+                            ).map((code) => (
+                                <SelectItem key={code} value={code}>
+                                    {code}
                                 </SelectItem>
                             ))}
                         </SelectContent>
@@ -628,9 +642,12 @@ export default function AudioLessonInterface({
                             <SelectValue placeholder={t(uiLocale, 'selectVoice')} />
                         </SelectTrigger>
                         <SelectContent>
-                            {(voiceAgentsForLang.length > 0 ? voiceAgentsForLang : VOICE_AGENTS).map((agent) => (
-                                <SelectItem key={agent.id} value={agent.id}>
-                                    {agent.accentLabel}
+                            {(browserVoices.length > 0
+                                ? browserVoices.filter(v => v.lang.split('-')[0] === language.split('-')[0])
+                                : []
+                            ).map((v) => (
+                                <SelectItem key={`${v.name}|${v.lang}`} value={`${v.name}|${v.lang}`}>
+                                    {v.name} ({v.lang})
                                 </SelectItem>
                             ))}
                         </SelectContent>
