@@ -10,6 +10,7 @@ import type { LessonConversation, ConversationMessage } from '@/lib/types'
 import {
     SUPPORTED_LANGUAGES,
     VOICE_AGENTS,
+    LANGUAGE_LABELS,
     getVoiceAgentsForLanguage,
     getDefaultVoiceAgentForLang,
 } from '@/lib/voice-config'
@@ -108,6 +109,16 @@ export default function LessonPage({
         console.log('[v0] Lesson completed with messages:', messages)
     }
 
+    function cleanVoiceName(name: string) {
+        return name
+            .replace(/Microsoft\s*/gi, "")
+            .replace(/Google\s*/gi, "")
+            .replace(/Apple\s*/gi, "")
+            .replace(/Online\s*\(Natural\)\s*/gi, "")
+            .replace(/\(.*?\)/g, "")
+            .trim();
+    }
+
     if (isLoading || !conversation) {
         return (
             <div className="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
@@ -121,6 +132,8 @@ export default function LessonPage({
             </div>
         )
     }
+
+
 
     return (
 
@@ -176,7 +189,7 @@ export default function LessonPage({
                                 <div className="flex flex-wrap items-end gap-4">
                                     <div className="flex flex-col gap-1.5 min-w-[180px]">
                                         <Label className="text-left text-xs font-semibold text-[#4c739a] dark:text-slate-400">
-                                            Language
+                                            Accent
                                         </Label>
                                         <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
                                             <SelectTrigger className="w-full">
@@ -186,14 +199,14 @@ export default function LessonPage({
                                             <SelectContent>
                                                 {getLanguages().map((code) => (
                                                     <SelectItem key={code} value={code}>
-                                                        {code}
+                                                        {LANGUAGE_LABELS[code] || code}
                                                     </SelectItem>
                                                 ))}
                                             </SelectContent>
                                         </Select>                                    </div>
                                     <div className="flex flex-col gap-1.5 min-w-[200px]">
                                         <Label className="text-left text-xs font-semibold text-[#4c739a] dark:text-slate-400">
-                                            Voice accent
+                                            Agent
                                         </Label>
                                         <Select value={selectedVoiceAgentId} onValueChange={setSelectedVoiceAgentId}>
                                             <SelectTrigger className="w-full">
@@ -204,7 +217,8 @@ export default function LessonPage({
                                                     .filter((v: SpeechSynthesisVoice) => v.lang.split('-')[0] === selectedLanguage.split('-')[0])
                                                     .map((v: SpeechSynthesisVoice) => (
                                                         <SelectItem key={`${v.name}|${v.lang}`} value={`${v.name}|${v.lang}`}>
-                                                            {v.name} ({v.lang})
+                                                            {cleanVoiceName(v.name)}
+                                                            {/*({v.lang})*/}
                                                         </SelectItem>
                                                     ))
                                                 }

@@ -6,6 +6,7 @@ import type { LessonConversation, ConversationMessage, ConversationTurn } from '
 import {
     SUPPORTED_LANGUAGES,
     VOICE_AGENTS,
+    LANGUAGE_LABELS,
     getVoiceAgentsForLanguage,
     getDefaultVoiceAgentForLang,
     loadBrowserVoices,
@@ -176,6 +177,9 @@ export default function AudioLessonInterface({
     const uiLocale = getUILocale(language)
     const hasVoiceForCurrentLang = hasVoiceForLang(browserVoices, language)
     const showEnglishTranslation = language.split('-')[0].toLowerCase() !== 'en'
+
+
+
 
     // Keep selectedVoice ref in sync (device voice)
     useEffect(() => {
@@ -508,6 +512,16 @@ export default function AudioLessonInterface({
         setIsProcessing(false)
     }
 
+    function cleanVoiceName(name: string) {
+        return name
+            .replace(/Microsoft\s*/gi, "")
+            .replace(/Google\s*/gi, "")
+            .replace(/Apple\s*/gi, "")
+            .replace(/Online\s*\(Natural\)\s*/gi, "")
+            .replace(/\(.*?\)/g, "")
+            .trim();
+    }
+
     // ── Render ────────────────────────────────────────────────────────────────
 
     if (conversationEnded) {
@@ -636,7 +650,7 @@ export default function AudioLessonInterface({
             <div className="flex flex-wrap items-end gap-4 mb-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
                 <div className="flex flex-col gap-1.5 min-w-[180px]">
                     <Label className="text-xs font-semibold text-[#4c739a] dark:text-slate-400">
-                        {t(uiLocale, 'language')}
+                        {t(uiLocale, 'Accent')}
                     </Label>
                     <Select value={language} onValueChange={setLanguage}>
                         <SelectTrigger className="w-full">
@@ -645,7 +659,7 @@ export default function AudioLessonInterface({
                         <SelectContent>
                             {getLanguages().map((code) => (
                                 <SelectItem key={code} value={code}>
-                                    {code}
+                                    {LANGUAGE_LABELS[code] || code}
                                 </SelectItem>
                             ))}
                         </SelectContent>
@@ -653,7 +667,7 @@ export default function AudioLessonInterface({
                 </div>
                 <div className="flex flex-col gap-1.5 min-w-[200px]">
                     <Label className="text-xs font-semibold text-[#4c739a] dark:text-slate-400">
-                        {t(uiLocale, 'voiceAccent')}
+                        {t(uiLocale, 'Agent')}
                     </Label>
                     <Select value={voiceAgentId} onValueChange={setVoiceAgentId}>
                         <SelectTrigger className="w-full">
@@ -665,7 +679,8 @@ export default function AudioLessonInterface({
                                 : []
                             ).map((v) => (
                                 <SelectItem key={`${v.name}|${v.lang}`} value={`${v.name}|${v.lang}`}>
-                                    {v.name} ({v.lang})
+                                    {cleanVoiceName(v.name)}
+                                    {/*({v.lang})*/}
                                 </SelectItem>
                             ))}
                         </SelectContent>

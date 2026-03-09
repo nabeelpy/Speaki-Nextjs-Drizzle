@@ -27,6 +27,132 @@ export const SUPPORTED_LANGUAGES: LanguageOption[] = [
   { code: 'ar-SA', name: 'Arabic', nativeName: 'العربية' },
 ]
 
+export const LANGUAGE_LABELS: Record<string, string> = {
+  "en-US": "United States",
+  "en-GB": "United Kingdom",
+  "en-IN": "India",
+  "en-AU": "Australia",
+  "en-CA": "Canada",
+  "en-NZ": "New Zealand",
+  "en-IE": "Ireland",
+  "en-ZA": "South Africa",
+
+  "fr-FR": "France",
+  "fr-CA": "Canada (French)",
+  "fr-BE": "Belgium (French)",
+  "fr-CH": "Switzerland (French)",
+
+  "es-ES": "Spain",
+  "es-US": "United States (Spanish)",
+  "es-MX": "Mexico",
+  "es-AR": "Argentina",
+  "es-CO": "Colombia",
+  "es-CL": "Chile",
+  "es-PE": "Peru",
+  "es-VE": "Venezuela",
+
+  "de-DE": "Germany",
+  "de-AT": "Austria",
+  "de-CH": "Switzerland (German)",
+
+  "it-IT": "Italy",
+  "it-CH": "Switzerland (Italian)",
+
+  "pt-PT": "Portugal",
+  "pt-BR": "Brazil",
+
+  "ru-RU": "Russia",
+  "uk-UA": "Ukraine",
+
+  "ar-SA": "Saudi Arabia",
+  "ar-AE": "UAE",
+  "ar-EG": "Egypt",
+  "ar-JO": "Jordan",
+  "ar-KW": "Kuwait",
+  "ar-QA": "Qatar",
+  "ar-MA": "Morocco",
+
+  "zh-CN": "China (Mandarin)",
+  "zh-TW": "Taiwan",
+  "zh-HK": "Hong Kong",
+  "zh-SG": "Singapore",
+
+  "ja-JP": "Japan",
+  "ko-KR": "South Korea",
+
+  "hi-IN": "India (Hindi)",
+  "bn-BD": "Bangladesh",
+  "bn-IN": "India (Bengali)",
+  "ur-PK": "Pakistan",
+  "ta-IN": "India (Tamil)",
+  "te-IN": "India (Telugu)",
+  "ml-IN": "India (Malayalam)",
+  "mr-IN": "India (Marathi)",
+  "gu-IN": "India (Gujarati)",
+  "pa-IN": "India (Punjabi)",
+
+  "tr-TR": "Turkey",
+
+  "nl-NL": "Netherlands",
+  "nl-BE": "Belgium (Dutch)",
+
+  "sv-SE": "Sweden",
+  "no-NO": "Norway",
+  "da-DK": "Denmark",
+  "fi-FI": "Finland",
+  "is-IS": "Iceland",
+
+  "pl-PL": "Poland",
+  "cs-CZ": "Czech Republic",
+  "sk-SK": "Slovakia",
+  "hu-HU": "Hungary",
+  "ro-RO": "Romania",
+  "bg-BG": "Bulgaria",
+  "hr-HR": "Croatia",
+  "sr-RS": "Serbia",
+  "sl-SI": "Slovenia",
+
+  "el-GR": "Greece",
+
+  "th-TH": "Thailand",
+  "vi-VN": "Vietnam",
+  "id-ID": "Indonesia",
+  "ms-MY": "Malaysia",
+  "fil-PH": "Philippines",
+
+  "he-IL": "Israel",
+  "fa-IR": "Iran",
+
+  "sw-KE": "Kenya",
+  "af-ZA": "South Africa (Afrikaans)",
+
+  "et-EE": "Estonia",
+  "lv-LV": "Latvia",
+  "lt-LT": "Lithuania",
+
+  "ca-ES": "Catalan",
+  "eu-ES": "Basque",
+  "gl-ES": "Galician",
+
+  "cy-GB": "Welsh",
+  "ga-IE": "Irish",
+
+  "mt-MT": "Malta",
+  "sq-AL": "Albania",
+  "mk-MK": "North Macedonia",
+  "bs-BA": "Bosnia",
+
+  "kk-KZ": "Kazakhstan",
+  "uz-UZ": "Uzbekistan",
+  "mn-MN": "Mongolia",
+
+  "ne-NP": "Nepal",
+  "si-LK": "Sri Lanka",
+  "km-KH": "Cambodia",
+  "lo-LA": "Laos",
+  "my-MM": "Myanmar"
+};
+
 /** Voice agents: accent presets per language. Users pick an agent for TTS voice. */
 export const VOICE_AGENTS: VoiceAgent[] = [
   // English
