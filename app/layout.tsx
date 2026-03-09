@@ -19,7 +19,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="light">
-      <body className={`${lexend.className} bg-[#f6f7f8] dark:bg-[#101922] text-[#0d141b] dark:text-slate-100 min-h-screen antialiased`}>{children}</body>
+    <body
+        suppressHydrationWarning
+        className={`${lexend.className} bg-[#f6f7f8] dark:bg-[#101922] text-[#0d141b] dark:text-slate-100 min-h-screen antialiased`}
+    >
+    {children}
+    </body>
     </html>
   )
 }
