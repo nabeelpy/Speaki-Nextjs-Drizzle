@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { motion } from 'framer-motion'
 import { VoiceRecorder, TextToSpeech } from '@/lib/voice-recorder'
 import type { LessonConversation, ConversationMessage, ConversationTurn } from '@/lib/types'
 import {
@@ -65,6 +66,114 @@ function getRomanization(turn: ConversationTurn | undefined, lang: string): stri
 
 function normalizeRole(r?: string) {
     return (r ?? '').trim().toLowerCase()
+}
+
+// Mascot Component
+interface MascotProps {
+    isSpeaking: boolean
+}
+
+const MascotFace = ({ isSpeaking }: MascotProps) => {
+    const mouthOpen = "M 35 58 Q 50 70 65 58"
+    const mouthSmile = "M 35 58 Q 50 66 65 58"
+    const mouthMid = "M 35 58 Q 50 63 65 58"
+    const mouthWide = "M 35 59 Q 50 74 65 59"
+    const mascotColor = "#5B9BF5"
+    const mascotShape = "M50,10 C74,9 91,26 91,50 C91,74 74,91 50,91 C26,91 9,74 9,50 C9,26 26,11 50,10Z"
+
+    return (
+        <motion.div
+            className={isSpeaking ? '' : 'animate-bounce-slow'}
+            animate={isSpeaking ? {
+                scaleX: [1, 1.07, 0.95, 1.04, 1],
+                scaleY: [1, 0.94, 1.06, 0.97, 1],
+            } : { scaleX: 1, scaleY: 1 }}
+            transition={{ duration: 0.38, repeat: isSpeaking ? Infinity : 0, ease: 'easeInOut' }}
+            style={{ width: 120, height: 120, transformOrigin: 'center center' }}
+        >
+            <svg viewBox="0 0 100 100" width="120" height="120" style={{ overflow: 'visible' }}>
+                <defs>
+                    <filter id="glow-mascot" x="-50%" y="-50%" width="200%" height="200%">
+                        <feGaussianBlur stdDeviation={isSpeaking ? "6" : "4"} result="blur" />
+                        <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+                    </filter>
+                    <radialGradient id="shine-mascot" cx="38%" cy="32%" r="55%">
+                        <stop offset="0%" stopColor="white" stopOpacity="0.35" />
+                        <stop offset="100%" stopColor={mascotColor} stopOpacity="0" />
+                    </radialGradient>
+                </defs>
+                <path d={mascotShape} fill={mascotColor} filter="url(#glow-mascot)" />
+                <path d={mascotShape} fill="url(#shine-mascot)" />
+                <g className="animate-blink">
+                    <ellipse cx="36" cy="42" rx="6" ry="7" fill="white" />
+                    <ellipse cx="64" cy="42" rx="6" ry="7" fill="white" />
+                    <circle cx="37.5" cy="43.5" r="3.2" fill="#111" />
+                    <circle cx="65.5" cy="43.5" r="3.2" fill="#111" />
+                    <circle cx="39" cy="41.5" r="1.3" fill="white" />
+                    <circle cx="67" cy="41.5" r="1.3" fill="white" />
+                </g>
+                <motion.path
+                    d={mouthSmile}
+                    fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round"
+                    animate={isSpeaking ? { d: [mouthOpen, mouthMid, mouthWide, mouthSmile] } : { d: mouthSmile }}
+                    transition={{ duration: 0.22, repeat: isSpeaking ? Infinity : 0 }}
+                />
+                <ellipse cx="25" cy="57" rx="8" ry="5.5" fill="white" opacity="0.15" />
+                <ellipse cx="75" cy="57" rx="8" ry="5.5" fill="white" opacity="0.15" />
+            </svg>
+        </motion.div>
+    )
+}
+
+const Waveform = ({ isSpeaking }: { isSpeaking: boolean }) => (
+    <div className="flex items-center gap-1 h-7">
+        {[0.5, 0.9, 1.3, 0.7, 1.5, 0.8, 1.1, 0.55].map((h, i) => (
+            <div
+                key={i}
+                className="w-0.5 rounded-full bg-[#5B9BF5] transition-all duration-300"
+                style={{
+                    height: isSpeaking ? `${Math.round(h * 16)}px` : "4px",
+                    opacity: isSpeaking ? 0.9 : 0.25,
+
+                    animationName: isSpeaking ? "wave-bar" : "none",
+                    animationDuration: `${0.38 + i * 0.055}s`,
+                    animationTimingFunction: "ease-in-out",
+                    animationIterationCount: "infinite",
+                    animationDirection: "alternate",
+                    animationDelay: `${i * 0.06}s`
+                }}
+            />
+        ))}
+    </div>
+)
+
+const Mascot = ({ isSpeaking }: MascotProps) => {
+    return (
+        <div className="flex flex-col items-center gap-3 mb-6">
+            <div className="relative flex items-center justify-center">
+                {isSpeaking && (
+                    <motion.div
+                        className="absolute w-36 h-36 rounded-full border-2 border-[#5B9BF5] opacity-50"
+                        animate={{ scale: [1, 1.35], opacity: [0.5, 0] }}
+                        transition={{ duration: 1, repeat: Infinity, ease: 'easeOut' }}
+                    />
+                )}
+                <MascotFace isSpeaking={isSpeaking} />
+            </div>
+            <Waveform isSpeaking={isSpeaking} />
+            <div className="flex items-center gap-1.5 bg-[#5B9BF5]/10 border border-[#5B9BF5]/20 px-3 py-1 rounded-full">
+                <motion.div
+                    animate={{ scale: isSpeaking ? [1, 1.4, 1] : 1, opacity: isSpeaking ? 1 : 0.3 }}
+                    transition={{ duration: 0.6, repeat: isSpeaking ? Infinity : 0 }}
+                    className="w-1.5 h-1.5 rounded-full bg-[#5B9BF5]"
+                    style={{ boxShadow: '0 0 8px #5B9BF5' }}
+                />
+                <span className="text-xs font-bold text-[#5B9BF5] uppercase tracking-wider">
+                    {isSpeaking ? 'Speaking' : 'Ready'}
+                </span>
+            </div>
+        </div>
+    )
 }
 
 export default function AudioLessonInterface({
@@ -646,6 +755,9 @@ export default function AudioLessonInterface({
 
     return (
         <div className="w-full max-w-4xl mx-auto">
+            {/* Mascot */}
+            <Mascot isSpeaking={isListening} />
+
             {/* Language & Voice */}
             <div className="flex flex-wrap items-end gap-4 mb-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
                 <div className="flex flex-col gap-1.5 min-w-[180px]">
