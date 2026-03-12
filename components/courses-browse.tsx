@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogT
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, } from '@/components/ui/select'
 import { Search, SlidersHorizontal } from 'lucide-react'
 interface CoursesBrowseProps { basePath?: string } const LEVELS = ['A1', 'A2', 'B1', 'B2'] as const
-export default function CoursesBrowse({ basePath = '' }: CoursesBrowseProps) { const [level, setLevel] = useState<string | null>('A1')
+export default function CoursesBrowse({ basePath = '' }: CoursesBrowseProps) { const [level, setLevel] = useState<string | null>('')
     const [category, setCategory] = useState<string | null>(null)
     const [search, setSearch] = useState<string | null>(null)
     const [selectedLanguage, setSelectedLanguage] = useState<string>('en')
