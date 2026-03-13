@@ -1,0 +1,37 @@
+Main Theme Colors
+Variable	Color
+--accent	#5B9BF5
+--accent-soft	rgba(91,155,245,0.12)
+--accent-border	rgba(91,155,245,0.22)
+--accent-shadow	rgba(91,155,245,0.35)
+2️⃣ Background Colors
+Variable	Color
+--bg	#eef2ff
+--card	#ffffff
+textarea background	#f7f9ff
+3️⃣ Text Colors
+Variable	Color
+--text	#1a1a2e
+--text-muted	rgba(26,26,46,0.42)
+--text-faint	rgba(26,26,46,0.22)
+--chip-text	#3b72d4
+4️⃣ Neutral / UI Colors
+Usage	Color
+white	#ffffff / white
+black	#111
+scrollbar	rgba(0,0,0,0.12)
+stop button background	rgba(0,0,0,0.05)
+stop button border	rgba(0,0,0,0.1)
+stop button text	rgba(0,0,0,0.38)
+stop button hover	rgba(0,0,0,0.1)
+5️⃣ Jelly Avatar Shine Colors
+Usage	Color
+shine highlight	rgba(255,255,255,0.32)
+jelly top highlight	rgba(255,255,255,0.2)
+6️⃣ Effects / Shadows
+Usage	Color
+drop shadow	rgba(91,155,245,0.6)
+card shadow	rgba(91,155,245,0.08)
+switcher border	rgba(91,155,245,0.15)
+switcher shadow	rgba(91,155,245,0.1)
+accent shadow variable	rgba(91,155,245,0.45)
