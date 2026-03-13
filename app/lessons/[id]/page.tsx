@@ -49,6 +49,27 @@ export default function LessonPage({
         setSavedLanguage(saved)
     }, [])
 
+    // Auto-select first accent once savedLanguage is resolved and voices are loaded
+    useEffect(() => {
+        if (savedLanguage === null) return // not yet loaded from localStorage
+        const langs = getLanguages()
+        if (langs.length > 0) {
+            setSelectedLanguage(langs[0])
+        }
+    }, [savedLanguage, voices])
+
+// Auto-select first agent voice when voices load or language changes
+    useEffect(() => {
+        if (voices.length === 0) return
+        const filtered = voices.filter(
+            (v) => v.lang.split('-')[0] === selectedLanguage.split('-')[0]
+        )
+        if (filtered.length > 0) {
+            setSelectedVoiceAgentId(`${filtered[0].name}|${filtered[0].lang}`)
+        }
+    }, [voices, selectedLanguage])
+
+
     const getLanguages = () => {
         const codes = Array.from(new Set(voices.map(v => v.lang)))
 
@@ -234,7 +255,7 @@ export default function LessonPage({
                                                 <SelectValue placeholder="Select delay" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {[1, 2, 3, 4, 5].map((d) => (
+                                                {[0, 1, 2, 3, 4].map((d) => (
                                                     <SelectItem key={d} value={String(d)}>
                                                         {d} seconds
                                                     </SelectItem>
@@ -257,7 +278,7 @@ export default function LessonPage({
                                     </li>
                                     <li className="flex items-start gap-2">
                                         <span className="text-[#137fec] font-bold mt-0.5">2.</span>
-                                        <span>Click "Start Recording" and speak your line</span>
+                                        <span>Then speak your line</span>
                                     </li>
                                     <li className="flex items-start gap-2">
                                         <span className="text-[#137fec] font-bold mt-0.5">3.</span>
