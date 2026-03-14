@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { motion } from 'framer-motion'
+import { useState, useEffect, useRef, memo } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { VoiceRecorder, TextToSpeech } from '@/lib/voice-recorder'
 import type { LessonConversation, ConversationMessage, ConversationTurn } from '@/lib/types'
 import {
@@ -37,6 +37,9 @@ const DEFAULT_LANG = 'en-US'
 const USER_ROLE_ALIASES = ['passenger', 'user', 'you', 'student', 'customer', 'learner', 'friend']
 const AI_ROLE_ALIASES = ['officer', 'ai', 'agent', 'system', 'teacher', 'assistant', 'me']
 
+// ─── Avatar type ──────────────────────────────────────────────────────────────
+type AvatarId = 'lingua' | 'jelly'
+
 function getTurnText(turn: ConversationTurn | undefined, lang: string): string {
     if (!turn) return ''
     const byLang = turn.textByLang
@@ -68,113 +71,370 @@ function normalizeRole(r?: string) {
     return (r ?? '').trim().toLowerCase()
 }
 
-// Mascot Component
-interface MascotProps {
+
+
+// ─── Animation constants ──────────────────────────────────────────────────────
+
+const SQUISH_ANIMATE_SPEAKING = {
+    scaleX: [1, 1.07, 0.95, 1.04, 1],
+    scaleY: [1, 0.94, 1.06, 0.97, 1],
+}
+const SQUISH_ANIMATE_IDLE = { scaleX: 1, scaleY: 1 }
+const SQUISH_TRANSITION_SPEAKING = { duration: 0.38, repeat: Infinity, ease: 'easeInOut' as const }
+const SQUISH_TRANSITION_IDLE = { duration: 0 }
+
+const MOUTH_SMILE = "M 35 58 Q 50 66 65 58"
+const MOUTH_OPEN  = "M 35 58 Q 50 70 65 58"
+const MOUTH_MID   = "M 35 58 Q 50 63 65 58"
+const MOUTH_WIDE  = "M 35 59 Q 50 74 65 59"
+
+const MOUTH_ANIMATE_SPEAKING = { d: [MOUTH_OPEN, MOUTH_MID, MOUTH_WIDE, MOUTH_SMILE] }
+const MOUTH_ANIMATE_IDLE = { d: MOUTH_SMILE }
+const MOUTH_TRANSITION_SPEAKING = { duration: 0.22, repeat: Infinity, ease: 'easeInOut' as const }
+const MOUTH_TRANSITION_IDLE = { duration: 0 }
+
+const PULSE_ANIMATE = { scale: [1, 1.35], opacity: [0.5, 0] }
+const PULSE_TRANSITION = { duration: 1, repeat: Infinity, ease: 'easeOut' as const }
+
+const PIP_ANIMATE_SPEAKING = { scale: [1, 1.4, 1], opacity: 1 }
+const PIP_ANIMATE_IDLE     = { scale: 1,            opacity: 0.3 }
+const PIP_TRANSITION_SPEAKING = { duration: 0.6, repeat: Infinity, ease: 'easeInOut' as const }
+const PIP_TRANSITION_IDLE     = { duration: 0 }
+
+const WAVE_HEIGHTS = [0.5, 0.9, 1.3, 0.7, 1.5, 0.8, 1.1, 0.55]
+
+const MASCOT_COLOR = '#5B9BF5'
+const MASCOT_SHAPE = "M50,10 C74,9 91,26 91,50 C91,74 74,91 50,91 C26,91 9,74 9,50 C9,26 26,11 50,10Z"
+
+// ─── Avatar 1: LinguaPals blob (original) ────────────────────────────────────
+
+const LinguaFace = memo(({ isSpeaking }: { isSpeaking: boolean }) => (
+    <motion.div
+        animate={isSpeaking ? SQUISH_ANIMATE_SPEAKING : SQUISH_ANIMATE_IDLE}
+        transition={isSpeaking ? SQUISH_TRANSITION_SPEAKING : SQUISH_TRANSITION_IDLE}
+        style={{ width: 120, height: 120, transformOrigin: 'center center' }}
+    >
+        <svg viewBox="0 0 100 100" width="120" height="120" style={{ overflow: 'visible' }}>
+            <defs>
+                <radialGradient id="shine-lingua" cx="38%" cy="32%" r="55%">
+                    <stop offset="0%" stopColor="white" stopOpacity="0.35" />
+                    <stop offset="100%" stopColor={MASCOT_COLOR} stopOpacity="0" />
+                </radialGradient>
+            </defs>
+            <path d={MASCOT_SHAPE} fill={MASCOT_COLOR} />
+            <path d={MASCOT_SHAPE} fill="url(#shine-lingua)" />
+            <g>
+                <ellipse cx="36" cy="42" rx="6" ry="7" fill="white" />
+                <ellipse cx="64" cy="42" rx="6" ry="7" fill="white" />
+                <circle cx="37.5" cy="43.5" r="3.2" fill="#111" />
+                <circle cx="65.5" cy="43.5" r="3.2" fill="#111" />
+                <circle cx="39" cy="41.5" r="1.3" fill="white" />
+                <circle cx="67" cy="41.5" r="1.3" fill="white" />
+            </g>
+            <motion.path
+                d={MOUTH_SMILE}
+                fill="none"
+                stroke="white"
+                strokeWidth="3.5"
+                strokeLinecap="round"
+                animate={isSpeaking ? MOUTH_ANIMATE_SPEAKING : MOUTH_ANIMATE_IDLE}
+                transition={isSpeaking ? MOUTH_TRANSITION_SPEAKING : MOUTH_TRANSITION_IDLE}
+            />
+            <ellipse cx="25" cy="57" rx="8" ry="5.5" fill="white" opacity="0.15" />
+            <ellipse cx="75" cy="57" rx="8" ry="5.5" fill="white" opacity="0.15" />
+        </svg>
+    </motion.div>
+))
+LinguaFace.displayName = 'LinguaFace'
+
+// ─── Avatar 2: Jelly blob (morphing, mouse-tracking) ─────────────────────────
+
+const JELLY_BORDER_RADIUS_FRAMES = [
+    '60% 40% 30% 70% / 60% 30% 70% 40%',
+    '30% 60% 70% 40% / 50% 60% 30% 60%',
+    '60% 40% 30% 70% / 60% 30% 70% 40%',
+]
+
+interface JellyFaceProps {
     isSpeaking: boolean
+    mousePos: { x: number; y: number }
 }
 
-const MascotFace = ({ isSpeaking }: MascotProps) => {
-    const mouthOpen = "M 35 58 Q 50 70 65 58"
-    const mouthSmile = "M 35 58 Q 50 66 65 58"
-    const mouthMid = "M 35 58 Q 50 63 65 58"
-    const mouthWide = "M 35 59 Q 50 74 65 59"
-    const mascotColor = "#5B9BF5"
-    const mascotShape = "M50,10 C74,9 91,26 91,50 C91,74 74,91 50,91 C26,91 9,74 9,50 C9,26 26,11 50,10Z"
+const JellyFace = memo(({ isSpeaking, mousePos }: JellyFaceProps) => {
+    const lookX = mousePos.x * 5
+    const lookY = mousePos.y * 4
 
     return (
         <motion.div
-            className={isSpeaking ? '' : 'animate-bounce-slow'}
-            animate={isSpeaking ? {
-                scaleX: [1, 1.07, 0.95, 1.04, 1],
-                scaleY: [1, 0.94, 1.06, 0.97, 1],
-            } : { scaleX: 1, scaleY: 1 }}
-            transition={{ duration: 0.38, repeat: isSpeaking ? Infinity : 0, ease: 'easeInOut' }}
+            animate={isSpeaking ? SQUISH_ANIMATE_SPEAKING : SQUISH_ANIMATE_IDLE}
+            transition={isSpeaking ? SQUISH_TRANSITION_SPEAKING : SQUISH_TRANSITION_IDLE}
             style={{ width: 120, height: 120, transformOrigin: 'center center' }}
         >
-            <svg viewBox="0 0 100 100" width="120" height="120" style={{ overflow: 'visible' }}>
-                <defs>
-                    <filter id="glow-mascot" x="-50%" y="-50%" width="200%" height="200%">
-                        <feGaussianBlur stdDeviation={isSpeaking ? "6" : "4"} result="blur" />
-                        <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-                    </filter>
-                    <radialGradient id="shine-mascot" cx="38%" cy="32%" r="55%">
-                        <stop offset="0%" stopColor="white" stopOpacity="0.35" />
-                        <stop offset="100%" stopColor={mascotColor} stopOpacity="0" />
-                    </radialGradient>
-                </defs>
-                <path d={mascotShape} fill={mascotColor} filter="url(#glow-mascot)" />
-                <path d={mascotShape} fill="url(#shine-mascot)" />
-                <g className="animate-blink">
-                    <ellipse cx="36" cy="42" rx="6" ry="7" fill="white" />
-                    <ellipse cx="64" cy="42" rx="6" ry="7" fill="white" />
-                    <circle cx="37.5" cy="43.5" r="3.2" fill="#111" />
-                    <circle cx="65.5" cy="43.5" r="3.2" fill="#111" />
-                    <circle cx="39" cy="41.5" r="1.3" fill="white" />
-                    <circle cx="67" cy="41.5" r="1.3" fill="white" />
-                </g>
-                <motion.path
-                    d={mouthSmile}
-                    fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round"
-                    animate={isSpeaking ? { d: [mouthOpen, mouthMid, mouthWide, mouthSmile] } : { d: mouthSmile }}
-                    transition={{ duration: 0.22, repeat: isSpeaking ? Infinity : 0 }}
-                />
-                <ellipse cx="25" cy="57" rx="8" ry="5.5" fill="white" opacity="0.15" />
-                <ellipse cx="75" cy="57" rx="8" ry="5.5" fill="white" opacity="0.15" />
-            </svg>
+            <motion.div
+                animate={{ borderRadius: JELLY_BORDER_RADIUS_FRAMES }}
+                transition={{ borderRadius: { repeat: Infinity, duration: 5, ease: 'linear' } }}
+                style={{
+                    width: '100%',
+                    height: '100%',
+                    background: MASCOT_COLOR,
+                    position: 'relative',
+                    overflow: 'hidden',
+                }}
+            >
+                {/* Shine overlay */}
+                <div style={{
+                    position: 'absolute', inset: 0, borderRadius: 'inherit',
+                    background: 'radial-gradient(circle at 38% 28%, rgba(255,255,255,0.32) 0%, transparent 58%)',
+                    pointerEvents: 'none',
+                }} />
+                <div style={{
+                    position: 'absolute', inset: 0, borderRadius: 'inherit',
+                    borderTop: '6px solid rgba(255,255,255,0.2)',
+                    pointerEvents: 'none',
+                }} />
+
+                {/* Face */}
+                <div style={{
+                    position: 'absolute', inset: 0,
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    paddingBottom: 8,
+                }}>
+                    {/* Eyes */}
+                    <div style={{ display: 'flex', gap: 20, marginBottom: 8 }}>
+                        {[0, 1].map((i) => (
+                            <motion.div
+                                key={i}
+                                style={{
+                                    width: 18, height: 24,
+                                    background: 'white', borderRadius: '50%',
+                                    position: 'relative', overflow: 'hidden',
+                                }}
+                                animate={{ scaleY: [1, 1, 0.08, 1] }}
+                                transition={{
+                                    repeat: Infinity, duration: 3.5,
+                                    times: [0, 0.88, 0.93, 1], delay: i * 0.1,
+                                }}
+                            >
+                                <div style={{
+                                    position: 'absolute', top: 4, left: 4,
+                                    width: 8, height: 8,
+                                    background: '#111', borderRadius: '50%',
+                                }} />
+                                <motion.div style={{
+                                    position: 'absolute', top: 3, left: 3,
+                                    width: 4, height: 4,
+                                    background: 'white', borderRadius: '50%',
+                                    x: lookX, y: lookY,
+                                }} />
+                            </motion.div>
+                        ))}
+                    </div>
+
+                    {/* Mouth */}
+                    <motion.div
+                        style={{ background: 'white', borderRadius: 50, opacity: 0.92 }}
+                        animate={isSpeaking
+                            ? { width: [20, 28, 20], height: [7, 20, 7] }
+                            : { width: 18, height: 6 }}
+                        transition={{ repeat: isSpeaking ? Infinity : 0, duration: 0.2 }}
+                    />
+                </div>
+            </motion.div>
         </motion.div>
     )
+})
+JellyFace.displayName = 'JellyFace'
+
+// ─── Avatar switcher pill ─────────────────────────────────────────────────────
+
+interface AvatarSwitcherProps {
+    activeId: AvatarId
+    onChange: (id: AvatarId) => void
 }
 
-const Waveform = ({ isSpeaking }: { isSpeaking: boolean }) => (
-    <div className="flex items-center gap-1 h-7">
-        {[0.5, 0.9, 1.3, 0.7, 1.5, 0.8, 1.1, 0.55].map((h, i) => (
-            <div
-                key={i}
-                className="w-0.5 rounded-full bg-[#5B9BF5] transition-all duration-300"
+const AvatarSwitcher = memo(({ activeId, onChange }: AvatarSwitcherProps) => (
+    <div style={{
+        display: 'inline-flex', gap: 4, padding: 4,
+        background: 'rgba(255,255,255,0.85)',
+        borderRadius: 999,
+        border: '1px solid rgba(91,155,245,0.18)',
+        boxShadow: '0 2px 10px rgba(91,155,245,0.1)',
+    }}>
+        {([
+            { id: 'lingua' as AvatarId, label: '🇫🇷 LinguaPals' },
+            { id: 'jelly'  as AvatarId, label: '🫧 Jelly Friend' },
+        ]).map(({ id, label }) => (
+            <button
+                key={id}
+                onClick={() => onChange(id)}
                 style={{
-                    height: isSpeaking ? `${Math.round(h * 16)}px` : "4px",
-                    opacity: isSpeaking ? 0.9 : 0.25,
-
-                    animationName: isSpeaking ? "wave-bar" : "none",
-                    animationDuration: `${0.38 + i * 0.055}s`,
-                    animationTimingFunction: "ease-in-out",
-                    animationIterationCount: "infinite",
-                    animationDirection: "alternate",
-                    animationDelay: `${i * 0.06}s`
+                    padding: '6px 16px',
+                    borderRadius: 999,
+                    fontWeight: 800,
+                    fontSize: 12,
+                    letterSpacing: '0.03em',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.22s ease',
+                    background: activeId === id ? MASCOT_COLOR : 'transparent',
+                    color: activeId === id ? '#fff' : 'rgba(0,0,0,0.45)',
+                    boxShadow: activeId === id ? '0 3px 12px rgba(91,155,245,0.4)' : 'none',
                 }}
-            />
+            >
+                {label}
+            </button>
         ))}
     </div>
-)
+))
+AvatarSwitcher.displayName = 'AvatarSwitcher'
 
-const Mascot = ({ isSpeaking }: MascotProps) => {
-    return (
-        <div className="flex flex-col items-center gap-3 mb-6">
-            <div className="relative flex items-center justify-center">
-                {isSpeaking && (
-                    <motion.div
-                        className="absolute w-36 h-36 rounded-full border-2 border-[#5B9BF5] opacity-50"
-                        animate={{ scale: [1, 1.35], opacity: [0.5, 0] }}
-                        transition={{ duration: 1, repeat: Infinity, ease: 'easeOut' }}
-                    />
-                )}
-                <MascotFace isSpeaking={isSpeaking} />
-            </div>
-            <Waveform isSpeaking={isSpeaking} />
-            <div className="flex items-center gap-1.5 bg-[#5B9BF5]/10 border border-[#5B9BF5]/20 px-3 py-1 rounded-full">
-                <motion.div
-                    animate={{ scale: isSpeaking ? [1, 1.4, 1] : 1, opacity: isSpeaking ? 1 : 0.3 }}
-                    transition={{ duration: 0.6, repeat: isSpeaking ? Infinity : 0 }}
-                    className="w-1.5 h-1.5 rounded-full bg-[#5B9BF5]"
-                    style={{ boxShadow: '0 0 8px #5B9BF5' }}
+// ─── Waveform ─────────────────────────────────────────────────────────────────
+
+const Waveform = memo(({ isSpeaking }: { isSpeaking: boolean }) => (
+    <>
+        <style>{`
+            @keyframes wave-bar {
+                from { transform: scaleY(0.3); }
+                to   { transform: scaleY(1); }
+            }
+        `}</style>
+        <div className="flex items-center gap-1 h-7">
+            {WAVE_HEIGHTS.map((h, i) => (
+                <div
+                    key={i}
+                    style={{
+                        width: 2,
+                        height: isSpeaking ? `${Math.round(h * 16)}px` : '4px',
+                        background: MASCOT_COLOR,
+                        borderRadius: 9999,
+                        opacity: isSpeaking ? 0.9 : 0.25,
+                        transformOrigin: 'center',
+                        transition: 'height 0.3s ease, opacity 0.3s ease',
+                        animationName: isSpeaking ? 'wave-bar' : 'none',
+                        animationDuration: `${0.38 + i * 0.055}s`,
+                        animationTimingFunction: 'ease-in-out',
+                        animationIterationCount: 'infinite',
+                        animationDirection: 'alternate',
+                        animationDelay: `${i * 0.06}s`,
+                    }}
                 />
-                <span className="text-xs font-bold text-[#5B9BF5] uppercase tracking-wider">
-                    {isSpeaking ? 'Speaking' : 'Ready'}
-                </span>
-            </div>
+            ))}
         </div>
-    )
+    </>
+))
+Waveform.displayName = 'Waveform'
+
+// ─── StatusPip ────────────────────────────────────────────────────────────────
+
+const StatusPip = memo(({ isSpeaking }: { isSpeaking: boolean }) => (
+    <div className="flex items-center gap-1.5 bg-[#5B9BF5]/10 border border-[#5B9BF5]/20 px-3 py-1 rounded-full">
+        <motion.div
+            animate={isSpeaking ? PIP_ANIMATE_SPEAKING : PIP_ANIMATE_IDLE}
+            transition={isSpeaking ? PIP_TRANSITION_SPEAKING : PIP_TRANSITION_IDLE}
+            className="w-1.5 h-1.5 rounded-full bg-[#5B9BF5]"
+            style={{ boxShadow: '0 0 8px #5B9BF5' }}
+        />
+        <span className="text-xs font-bold text-[#5B9BF5] uppercase tracking-wider">
+            {isSpeaking ? 'Speaking' : 'Ready'}
+        </span>
+    </div>
+))
+StatusPip.displayName = 'StatusPip'
+
+// ─── Mascot container — renders active avatar, never remounts shell ───────────
+
+interface MascotProps {
+    isSpeaking: boolean
+    avatarId: AvatarId
+    mousePos: { x: number; y: number }
 }
+
+const Mascot = memo(({ isSpeaking, avatarId, mousePos }: MascotProps) => (
+    <div className="flex flex-col items-center gap-3 mb-4">
+        {/* Avatar switcher */}
+        <AvatarSwitcher
+            activeId={avatarId}
+            // onChange is passed from parent — see usage below
+            // We re-expose it via a context trick; simpler: pass it as prop
+            onChange={() => {}} // overridden in MascotWithSwitcher
+        />
+
+        {/* Character */}
+        <div className="relative flex items-center justify-center mt-2">
+            {isSpeaking && (
+                <motion.div
+                    className="absolute w-36 h-36 rounded-full border-2 border-[#5B9BF5] opacity-50"
+                    animate={PULSE_ANIMATE}
+                    transition={PULSE_TRANSITION}
+                />
+            )}
+            <AnimatePresence mode="wait">
+                <motion.div
+                    key={avatarId}
+                    initial={{ opacity: 0, scale: 0.82 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.82 }}
+                    transition={{ duration: 0.25, ease: 'easeInOut' }}
+                >
+                    {avatarId === 'lingua'
+                        ? <LinguaFace isSpeaking={isSpeaking} />
+                        : <JellyFace  isSpeaking={isSpeaking} mousePos={mousePos} />
+                    }
+                </motion.div>
+            </AnimatePresence>
+        </div>
+
+        <Waveform isSpeaking={isSpeaking} />
+        <StatusPip isSpeaking={isSpeaking} />
+    </div>
+))
+Mascot.displayName = 'Mascot'
+
+// ─── Full Mascot block with switcher wired to parent state ────────────────────
+
+interface MascotBlockProps {
+    isSpeaking: boolean
+    avatarId: AvatarId
+    onAvatarChange: (id: AvatarId) => void
+    mousePos: { x: number; y: number }
+}
+
+const MascotBlock = memo(({ isSpeaking, avatarId, onAvatarChange, mousePos }: MascotBlockProps) => (
+    <div className="flex flex-col items-center gap-3 mb-6">
+        <AvatarSwitcher activeId={avatarId} onChange={onAvatarChange} />
+
+        <div className="relative flex items-center justify-center mt-2">
+            {isSpeaking && (
+                <motion.div
+                    className="absolute w-36 h-36 rounded-full border-2 border-[#5B9BF5] opacity-50"
+                    animate={PULSE_ANIMATE}
+                    transition={PULSE_TRANSITION}
+                />
+            )}
+            <AnimatePresence mode="wait">
+                <motion.div
+                    key={avatarId}
+                    initial={{ opacity: 0, scale: 0.82 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.82 }}
+                    transition={{ duration: 0.25, ease: 'easeInOut' }}
+                >
+                    {avatarId === 'lingua'
+                        ? <LinguaFace isSpeaking={isSpeaking} />
+                        : <JellyFace  isSpeaking={isSpeaking} mousePos={mousePos} />
+                    }
+                </motion.div>
+            </AnimatePresence>
+        </div>
+
+        <Waveform isSpeaking={isSpeaking} />
+        <StatusPip isSpeaking={isSpeaking} />
+    </div>
+))
+MascotBlock.displayName = 'MascotBlock'
+
+// ─── Main Component ────────────────────────────────────────────────────────────
 
 export default function AudioLessonInterface({
                                                  conversation,
@@ -202,6 +462,30 @@ export default function AudioLessonInterface({
     const [userRoleNorm, setUserRoleNorm] = useState<string | null>(null)
     const [aiRoleNorm, setAiRoleNorm] = useState<string | null>(null)
 
+    // Auto Scroll Down
+    const chatContainerRef = useRef<HTMLDivElement | null>(null)
+    useEffect(() => {
+        if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop =
+                chatContainerRef.current.scrollHeight
+        }
+    }, [messages])
+
+
+    // ── NEW: avatar state + mouse tracking ───────────────────────────────────
+    const [avatarId, setAvatarId] = useState<AvatarId>('lingua')
+    const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
+
+    useEffect(() => {
+        const fn = (e: MouseEvent) => setMousePos({
+            x: (e.clientX / window.innerWidth) * 2 - 1,
+            y: (e.clientY / window.innerHeight) * 2 - 1,
+        })
+        window.addEventListener('mousemove', fn)
+        return () => window.removeEventListener('mousemove', fn)
+    }, [])
+    // ─────────────────────────────────────────────────────────────────────────
+
     const STORAGE_KEY = 'selected-language-code'
     const excludedLanguages = ['fr-FR', 'es-ES', 'ar-SA', 'es-US', 'zh-CH', 'zh-CN']
 
@@ -213,17 +497,13 @@ export default function AudioLessonInterface({
 
     const getLanguages = () => {
         const codes = Array.from(new Set(browserVoices.map(v => v.lang)))
-
-        // If English → show all except excluded
         if (!savedLanguage || savedLanguage === 'en') {
             return codes.filter(code => !excludedLanguages.includes(code))
         }
-
-        // If another language → show only that one
         return codes.filter(code => code.startsWith(savedLanguage))
     }
 
-    // ── Refs for everything that closures need to read synchronously ──
+    // ── Refs ──────────────────────────────────────────────────────────────────
     const voiceRecorderRef = useRef<VoiceRecorder>(new VoiceRecorder())
     const textToSpeechRef = useRef<TextToSpeech>(new TextToSpeech())
     const timerRef = useRef<NodeJS.Timeout | null>(null)
@@ -233,7 +513,6 @@ export default function AudioLessonInterface({
     const countdownTurnRef = useRef<number | null>(null)
     const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
 
-    // Sync refs — keep in lock-step with state so interval/timeout closures always see fresh values
     const currentTurnIndexRef = useRef(0)
     const isRecordingRef = useRef(false)
     const isListeningRef = useRef(false)
@@ -287,15 +566,10 @@ export default function AudioLessonInterface({
     const hasVoiceForCurrentLang = hasVoiceForLang(browserVoices, language)
     const showEnglishTranslation = language.split('-')[0].toLowerCase() !== 'en'
 
-
-
-
-    // Keep selectedVoice ref in sync (device voice)
+    // Keep selectedVoice ref in sync
     useEffect(() => {
-        const key = voiceAgentId
-        const v = browserVoices.find((bv) => `${bv.name}|${bv.lang}` === key) || null
+        const v = browserVoices.find((bv) => `${bv.name}|${bv.lang}` === voiceAgentId) || null
         selectedVoiceAgentRef.current = undefined
-        // Reuse selectedVoiceAgentRef to carry actual SpeechSynthesisVoice via 'as any'
         ;(selectedVoiceAgentRef as any).currentVoice = v
     }, [voiceAgentId, browserVoices])
 
@@ -304,7 +578,6 @@ export default function AudioLessonInterface({
         loadBrowserVoices().then((voices) => {
             setBrowserVoices(voices)
             textToSpeechRef.current.setBrowserVoices(voices)
-            // Initialize default voice key for current language
             if (!voiceAgentId && voices.length > 0) {
                 const byLang = voices.find(v => v.lang.toLowerCase().startsWith(language.toLowerCase()))
                 const first = byLang || voices[0]
@@ -335,14 +608,13 @@ export default function AudioLessonInterface({
         return () => { if (timerRef.current) clearInterval(timerRef.current) }
     }, [])
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
     const isUserTurnByIndex = (idx: number): boolean => {
         const turn = conversation.turns[idx]
         if (!turn) return false
         const norm = normalizeRole(turn.role)
         const uRole = userRoleNormRef.current
-        const aRole = aiRoleNormRef.current
         return (uRole ? norm === uRole : USER_ROLE_ALIASES.includes(norm)) ||
             (!AI_ROLE_ALIASES.includes(norm) && idx % 2 === 1)
     }
@@ -353,7 +625,7 @@ export default function AudioLessonInterface({
         setCountdownLeft(0)
     }
 
-    // ── Core functions (use refs, never state, for async-safe reads) ─────────
+    // ── Core functions ────────────────────────────────────────────────────────
 
     const startRecording = async () => {
         if (isRecordingRef.current) return
@@ -377,8 +649,6 @@ export default function AudioLessonInterface({
             voiceRecorderRef.current.setLanguage(languageRef.current)
             await voiceRecorderRef.current.startRecording()
 
-            // Auto-stop timer
-            const turnAtStart = conversation.turns[currentTurnIndexRef.current]
             const recordingDuration = conversation?.recordingTime ?? 10
             let timeLeft = recordingDuration
             setRecordingTimeLeft(timeLeft)
@@ -408,7 +678,6 @@ export default function AudioLessonInterface({
         if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null }
         setRecordingTimeLeft(null)
 
-        // Snapshot refs NOW before any awaits
         const turnIndex = currentTurnIndexRef.current
         const turn = conversation.turns[turnIndex]
         const transcript = liveTranscriptRef.current
@@ -436,13 +705,11 @@ export default function AudioLessonInterface({
 
             setMessages((prev) => [...prev, userMessage])
 
-            // Last turn?
             if (turnIndex >= conversation.turns.length - 1) {
                 setTimeout(() => endConversation(), 1000)
                 return
             }
 
-            // Advance to next AI turn
             const nextTurnIdx = turnIndex + 1
             const nextTurn = conversation.turns[nextTurnIdx]
 
@@ -512,7 +779,6 @@ export default function AudioLessonInterface({
 
         textToSpeechRef.current.speak(message, {
             lang: languageRef.current,
-            // Use the exact browser voice if available (stored on the ref as any.currentVoice)
             voice: (selectedVoiceAgentRef as any).currentVoice ?? undefined,
             onEnd: () => {
                 isListeningRef.current = false
@@ -527,7 +793,6 @@ export default function AudioLessonInterface({
                 if (nextTurn && isUserTurnByIndex(nextIdx)) {
                     setTimeout(() => startCountdown(nextIdx), 0)
                 } else if (nextTurn) {
-                    // Back-to-back AI turns
                     setTimeout(() => {
                         playAIMessage(getTurnText(nextTurn, languageRef.current), nextTurn.role, nextIdx)
                     }, 500)
@@ -628,7 +893,7 @@ export default function AudioLessonInterface({
             .replace(/Apple\s*/gi, "")
             .replace(/Online\s*\(Natural\)\s*/gi, "")
             .replace(/\(.*?\)/g, "")
-            .trim();
+            .trim()
     }
 
     // ── Render ────────────────────────────────────────────────────────────────
@@ -755,8 +1020,13 @@ export default function AudioLessonInterface({
 
     return (
         <div className="w-full max-w-4xl mx-auto">
-            {/* Mascot */}
-            <Mascot isSpeaking={isListening} />
+            {/* ── Mascot with avatar switcher ── */}
+            <MascotBlock
+                isSpeaking={isListening}
+                avatarId={avatarId}
+                onAvatarChange={setAvatarId}
+                mousePos={mousePos}
+            />
 
             {/* Language & Voice */}
             <div className="flex flex-wrap items-end gap-4 mb-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
@@ -787,12 +1057,11 @@ export default function AudioLessonInterface({
                         </SelectTrigger>
                         <SelectContent>
                             {(browserVoices.length > 0
-                                ? browserVoices.filter(v => v.lang.split('-')[0] === language.split('-')[0])
-                                : []
+                                    ? browserVoices.filter(v => v.lang.split('-')[0] === language.split('-')[0])
+                                    : []
                             ).map((v) => (
                                 <SelectItem key={`${v.name}|${v.lang}`} value={`${v.name}|${v.lang}`}>
                                     {cleanVoiceName(v.name)}
-                                    {/*({v.lang})*/}
                                 </SelectItem>
                             ))}
                         </SelectContent>
@@ -833,7 +1102,10 @@ export default function AudioLessonInterface({
             </div>
 
             {/* Conversation Transcript */}
-            <div className="bg-white dark:bg-slate-900 border border-[#e7edf3] dark:border-slate-800 rounded-lg p-6 mb-6 max-h-96 overflow-y-auto">
+            <div
+                ref={chatContainerRef}
+                className="bg-white dark:bg-slate-900 border border-[#e7edf3] dark:border-slate-800 rounded-lg p-6 mb-6 max-h-96 overflow-y-auto"
+            >
                 <div className="space-y-4">
                     {messages.map((msg) => (
                         <div key={msg.id} className={`flex ${msg.speaker === 'user' ? 'justify-end' : 'justify-start'}`}>
