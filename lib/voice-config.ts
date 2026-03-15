@@ -150,8 +150,10 @@ export const LANGUAGE_LABELS: Record<string, string> = {
   "si-LK": "Sri Lanka",
   "km-KH": "Cambodia",
   "lo-LA": "Laos",
-  "my-MM": "Myanmar"
+  "my-MM": "Myanmar",
 };
+
+
 
 /** Voice agents: accent presets per language. Users pick an agent for TTS voice. */
 export const VOICE_AGENTS: VoiceAgent[] = [

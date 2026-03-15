@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, memo } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { VoiceRecorder, TextToSpeech } from '@/lib/voice-recorder'
 import type { LessonConversation, ConversationMessage, ConversationTurn } from '@/lib/types'
 import {
@@ -37,6 +37,9 @@ const DEFAULT_LANG = 'en-US'
 const USER_ROLE_ALIASES = ['passenger', 'user', 'you', 'student', 'customer', 'learner', 'friend']
 const AI_ROLE_ALIASES = ['officer', 'ai', 'agent', 'system', 'teacher', 'assistant', 'me']
 
+// ─── Avatar type ──────────────────────────────────────────────────────────────
+type AvatarId = 'lingua' | 'jelly'
+
 function getTurnText(turn: ConversationTurn | undefined, lang: string): string {
     if (!turn) return ''
     const byLang = turn.textByLang
@@ -68,7 +71,9 @@ function normalizeRole(r?: string) {
     return (r ?? '').trim().toLowerCase()
 }
 
-// ─── Animation constants (defined outside components for stable references) ──
+
+
+// ─── Animation constants ──────────────────────────────────────────────────────
 
 const SQUISH_ANIMATE_SPEAKING = {
     scaleX: [1, 1.07, 0.95, 1.04, 1],
@@ -98,11 +103,66 @@ const PIP_TRANSITION_IDLE     = { duration: 0 }
 
 const WAVE_HEIGHTS = [0.5, 0.9, 1.3, 0.7, 1.5, 0.8, 1.1, 0.55]
 
-// ─── MascotFace (memoized — only re-renders when isSpeaking flips) ────────────
+const MASCOT_COLOR = '#5B9BF5'
+const MASCOT_SHAPE = "M50,10 C74,9 91,26 91,50 C91,74 74,91 50,91 C26,91 9,74 9,50 C9,26 26,11 50,10Z"
 
-const MascotFace = memo(({ isSpeaking }: { isSpeaking: boolean }) => {
-    const mascotColor = "#5B9BF5"
-    const mascotShape = "M50,10 C74,9 91,26 91,50 C91,74 74,91 50,91 C26,91 9,74 9,50 C9,26 26,11 50,10Z"
+// ─── Avatar 1: LinguaPals blob (original) ────────────────────────────────────
+
+const LinguaFace = memo(({ isSpeaking }: { isSpeaking: boolean }) => (
+    <motion.div
+        animate={isSpeaking ? SQUISH_ANIMATE_SPEAKING : SQUISH_ANIMATE_IDLE}
+        transition={isSpeaking ? SQUISH_TRANSITION_SPEAKING : SQUISH_TRANSITION_IDLE}
+        style={{ width: 120, height: 120, transformOrigin: 'center center' }}
+    >
+        <svg viewBox="0 0 100 100" width="120" height="120" style={{ overflow: 'visible' }}>
+            <defs>
+                <radialGradient id="shine-lingua" cx="38%" cy="32%" r="55%">
+                    <stop offset="0%" stopColor="white" stopOpacity="0.35" />
+                    <stop offset="100%" stopColor={MASCOT_COLOR} stopOpacity="0" />
+                </radialGradient>
+            </defs>
+            <path d={MASCOT_SHAPE} fill={MASCOT_COLOR} />
+            <path d={MASCOT_SHAPE} fill="url(#shine-lingua)" />
+            <g>
+                <ellipse cx="36" cy="42" rx="6" ry="7" fill="white" />
+                <ellipse cx="64" cy="42" rx="6" ry="7" fill="white" />
+                <circle cx="37.5" cy="43.5" r="3.2" fill="#111" />
+                <circle cx="65.5" cy="43.5" r="3.2" fill="#111" />
+                <circle cx="39" cy="41.5" r="1.3" fill="white" />
+                <circle cx="67" cy="41.5" r="1.3" fill="white" />
+            </g>
+            <motion.path
+                d={MOUTH_SMILE}
+                fill="none"
+                stroke="white"
+                strokeWidth="3.5"
+                strokeLinecap="round"
+                animate={isSpeaking ? MOUTH_ANIMATE_SPEAKING : MOUTH_ANIMATE_IDLE}
+                transition={isSpeaking ? MOUTH_TRANSITION_SPEAKING : MOUTH_TRANSITION_IDLE}
+            />
+            <ellipse cx="25" cy="57" rx="8" ry="5.5" fill="white" opacity="0.15" />
+            <ellipse cx="75" cy="57" rx="8" ry="5.5" fill="white" opacity="0.15" />
+        </svg>
+    </motion.div>
+))
+LinguaFace.displayName = 'LinguaFace'
+
+// ─── Avatar 2: Jelly blob (morphing, mouse-tracking) ─────────────────────────
+
+const JELLY_BORDER_RADIUS_FRAMES = [
+    '60% 40% 30% 70% / 60% 30% 70% 40%',
+    '30% 60% 70% 40% / 50% 60% 30% 60%',
+    '60% 40% 30% 70% / 60% 30% 70% 40%',
+]
+
+interface JellyFaceProps {
+    isSpeaking: boolean
+    mousePos: { x: number; y: number }
+}
+
+const JellyFace = memo(({ isSpeaking, mousePos }: JellyFaceProps) => {
+    const lookX = mousePos.x * 5
+    const lookY = mousePos.y * 4
 
     return (
         <motion.div
@@ -110,42 +170,126 @@ const MascotFace = memo(({ isSpeaking }: { isSpeaking: boolean }) => {
             transition={isSpeaking ? SQUISH_TRANSITION_SPEAKING : SQUISH_TRANSITION_IDLE}
             style={{ width: 120, height: 120, transformOrigin: 'center center' }}
         >
-            <svg viewBox="0 0 100 100" width="120" height="120" style={{ overflow: 'visible' }}>
-                <defs>
-                    <radialGradient id="shine-mascot" cx="38%" cy="32%" r="55%">
-                        <stop offset="0%" stopColor="white" stopOpacity="0.35" />
-                        <stop offset="100%" stopColor={mascotColor} stopOpacity="0" />
-                    </radialGradient>
-                </defs>
-                {/* Removed feGaussianBlur glow filter — causes GPU jank during animation */}
-                <path d={mascotShape} fill={mascotColor} />
-                <path d={mascotShape} fill="url(#shine-mascot)" />
-                <g>
-                    <ellipse cx="36" cy="42" rx="6" ry="7" fill="white" />
-                    <ellipse cx="64" cy="42" rx="6" ry="7" fill="white" />
-                    <circle cx="37.5" cy="43.5" r="3.2" fill="#111" />
-                    <circle cx="65.5" cy="43.5" r="3.2" fill="#111" />
-                    <circle cx="39" cy="41.5" r="1.3" fill="white" />
-                    <circle cx="67" cy="41.5" r="1.3" fill="white" />
-                </g>
-                <motion.path
-                    d={MOUTH_SMILE}
-                    fill="none"
-                    stroke="white"
-                    strokeWidth="3.5"
-                    strokeLinecap="round"
-                    animate={isSpeaking ? MOUTH_ANIMATE_SPEAKING : MOUTH_ANIMATE_IDLE}
-                    transition={isSpeaking ? MOUTH_TRANSITION_SPEAKING : MOUTH_TRANSITION_IDLE}
-                />
-                <ellipse cx="25" cy="57" rx="8" ry="5.5" fill="white" opacity="0.15" />
-                <ellipse cx="75" cy="57" rx="8" ry="5.5" fill="white" opacity="0.15" />
-            </svg>
+            <motion.div
+                animate={{ borderRadius: JELLY_BORDER_RADIUS_FRAMES }}
+                transition={{ borderRadius: { repeat: Infinity, duration: 5, ease: 'linear' } }}
+                style={{
+                    width: '100%',
+                    height: '100%',
+                    background: MASCOT_COLOR,
+                    position: 'relative',
+                    overflow: 'hidden',
+                }}
+            >
+                {/* Shine overlay */}
+                <div style={{
+                    position: 'absolute', inset: 0, borderRadius: 'inherit',
+                    background: 'radial-gradient(circle at 38% 28%, rgba(255,255,255,0.32) 0%, transparent 58%)',
+                    pointerEvents: 'none',
+                }} />
+                <div style={{
+                    position: 'absolute', inset: 0, borderRadius: 'inherit',
+                    borderTop: '6px solid rgba(255,255,255,0.2)',
+                    pointerEvents: 'none',
+                }} />
+
+                {/* Face */}
+                <div style={{
+                    position: 'absolute', inset: 0,
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    paddingBottom: 8,
+                }}>
+                    {/* Eyes */}
+                    <div style={{ display: 'flex', gap: 20, marginBottom: 8 }}>
+                        {[0, 1].map((i) => (
+                            <motion.div
+                                key={i}
+                                style={{
+                                    width: 18, height: 24,
+                                    background: 'white', borderRadius: '50%',
+                                    position: 'relative', overflow: 'hidden',
+                                }}
+                                animate={{ scaleY: [1, 1, 0.08, 1] }}
+                                transition={{
+                                    repeat: Infinity, duration: 3.5,
+                                    times: [0, 0.88, 0.93, 1], delay: i * 0.1,
+                                }}
+                            >
+                                <div style={{
+                                    position: 'absolute', top: 4, left: 4,
+                                    width: 8, height: 8,
+                                    background: '#111', borderRadius: '50%',
+                                }} />
+                                <motion.div style={{
+                                    position: 'absolute', top: 3, left: 3,
+                                    width: 4, height: 4,
+                                    background: 'white', borderRadius: '50%',
+                                    x: lookX, y: lookY,
+                                }} />
+                            </motion.div>
+                        ))}
+                    </div>
+
+                    {/* Mouth */}
+                    <motion.div
+                        style={{ background: 'white', borderRadius: 50, opacity: 0.92 }}
+                        animate={isSpeaking
+                            ? { width: [20, 28, 20], height: [7, 20, 7] }
+                            : { width: 18, height: 6 }}
+                        transition={{ repeat: isSpeaking ? Infinity : 0, duration: 0.2 }}
+                    />
+                </div>
+            </motion.div>
         </motion.div>
     )
 })
-MascotFace.displayName = 'MascotFace'
+JellyFace.displayName = 'JellyFace'
 
-// ─── Waveform (memoized — pure CSS, no Framer Motion) ─────────────────────────
+// ─── Avatar switcher pill ─────────────────────────────────────────────────────
+
+interface AvatarSwitcherProps {
+    activeId: AvatarId
+    onChange: (id: AvatarId) => void
+}
+
+const AvatarSwitcher = memo(({ activeId, onChange }: AvatarSwitcherProps) => (
+    <div style={{
+        display: 'inline-flex', gap: 4, padding: 4,
+        background: 'rgba(255,255,255,0.85)',
+        borderRadius: 999,
+        border: '1px solid rgba(91,155,245,0.18)',
+        boxShadow: '0 2px 10px rgba(91,155,245,0.1)',
+    }}>
+        {([
+            { id: 'lingua' as AvatarId, label: '🇫🇷 LinguaPals' },
+            { id: 'jelly'  as AvatarId, label: '🫧 Jelly Friend' },
+        ]).map(({ id, label }) => (
+            <button
+                key={id}
+                onClick={() => onChange(id)}
+                style={{
+                    padding: '6px 16px',
+                    borderRadius: 999,
+                    fontWeight: 800,
+                    fontSize: 12,
+                    letterSpacing: '0.03em',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.22s ease',
+                    background: activeId === id ? MASCOT_COLOR : 'transparent',
+                    color: activeId === id ? '#fff' : 'rgba(0,0,0,0.45)',
+                    boxShadow: activeId === id ? '0 3px 12px rgba(91,155,245,0.4)' : 'none',
+                }}
+            >
+                {label}
+            </button>
+        ))}
+    </div>
+))
+AvatarSwitcher.displayName = 'AvatarSwitcher'
+
+// ─── Waveform ─────────────────────────────────────────────────────────────────
 
 const Waveform = memo(({ isSpeaking }: { isSpeaking: boolean }) => (
     <>
@@ -162,7 +306,7 @@ const Waveform = memo(({ isSpeaking }: { isSpeaking: boolean }) => (
                     style={{
                         width: 2,
                         height: isSpeaking ? `${Math.round(h * 16)}px` : '4px',
-                        background: '#5B9BF5',
+                        background: MASCOT_COLOR,
                         borderRadius: 9999,
                         opacity: isSpeaking ? 0.9 : 0.25,
                         transformOrigin: 'center',
@@ -181,7 +325,7 @@ const Waveform = memo(({ isSpeaking }: { isSpeaking: boolean }) => (
 ))
 Waveform.displayName = 'Waveform'
 
-// ─── StatusPip (memoized) ──────────────────────────────────────────────────────
+// ─── StatusPip ────────────────────────────────────────────────────────────────
 
 const StatusPip = memo(({ isSpeaking }: { isSpeaking: boolean }) => (
     <div className="flex items-center gap-1.5 bg-[#5B9BF5]/10 border border-[#5B9BF5]/20 px-3 py-1 rounded-full">
@@ -198,11 +342,26 @@ const StatusPip = memo(({ isSpeaking }: { isSpeaking: boolean }) => (
 ))
 StatusPip.displayName = 'StatusPip'
 
-// ─── Mascot (memoized container) ──────────────────────────────────────────────
+// ─── Mascot container — renders active avatar, never remounts shell ───────────
 
-const Mascot = memo(({ isSpeaking }: { isSpeaking: boolean }) => (
-    <div className="flex flex-col items-center gap-3 mb-6">
-        <div className="relative flex items-center justify-center">
+interface MascotProps {
+    isSpeaking: boolean
+    avatarId: AvatarId
+    mousePos: { x: number; y: number }
+}
+
+const Mascot = memo(({ isSpeaking, avatarId, mousePos }: MascotProps) => (
+    <div className="flex flex-col items-center gap-3 mb-4">
+        {/* Avatar switcher */}
+        <AvatarSwitcher
+            activeId={avatarId}
+            // onChange is passed from parent — see usage below
+            // We re-expose it via a context trick; simpler: pass it as prop
+            onChange={() => {}} // overridden in MascotWithSwitcher
+        />
+
+        {/* Character */}
+        <div className="relative flex items-center justify-center mt-2">
             {isSpeaking && (
                 <motion.div
                     className="absolute w-36 h-36 rounded-full border-2 border-[#5B9BF5] opacity-50"
@@ -210,13 +369,70 @@ const Mascot = memo(({ isSpeaking }: { isSpeaking: boolean }) => (
                     transition={PULSE_TRANSITION}
                 />
             )}
-            <MascotFace isSpeaking={isSpeaking} />
+            <AnimatePresence mode="wait">
+                <motion.div
+                    key={avatarId}
+                    initial={{ opacity: 0, scale: 0.82 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.82 }}
+                    transition={{ duration: 0.25, ease: 'easeInOut' }}
+                >
+                    {avatarId === 'lingua'
+                        ? <LinguaFace isSpeaking={isSpeaking} />
+                        : <JellyFace  isSpeaking={isSpeaking} mousePos={mousePos} />
+                    }
+                </motion.div>
+            </AnimatePresence>
         </div>
+
         <Waveform isSpeaking={isSpeaking} />
         <StatusPip isSpeaking={isSpeaking} />
     </div>
 ))
 Mascot.displayName = 'Mascot'
+
+// ─── Full Mascot block with switcher wired to parent state ────────────────────
+
+interface MascotBlockProps {
+    isSpeaking: boolean
+    avatarId: AvatarId
+    onAvatarChange: (id: AvatarId) => void
+    mousePos: { x: number; y: number }
+}
+
+const MascotBlock = memo(({ isSpeaking, avatarId, onAvatarChange, mousePos }: MascotBlockProps) => (
+    <div className="flex flex-col items-center gap-3 mb-6">
+        <AvatarSwitcher activeId={avatarId} onChange={onAvatarChange} />
+
+        <div className="relative flex items-center justify-center mt-2">
+            {isSpeaking && (
+                <motion.div
+                    className="absolute w-36 h-36 rounded-full border-2 border-[#5B9BF5] opacity-50"
+                    animate={PULSE_ANIMATE}
+                    transition={PULSE_TRANSITION}
+                />
+            )}
+            <AnimatePresence mode="wait">
+                <motion.div
+                    key={avatarId}
+                    initial={{ opacity: 0, scale: 0.82 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.82 }}
+                    transition={{ duration: 0.25, ease: 'easeInOut' }}
+                >
+                    {avatarId === 'lingua'
+                        ? <LinguaFace isSpeaking={isSpeaking} />
+                        : <JellyFace  isSpeaking={isSpeaking} mousePos={mousePos} />
+                    }
+                </motion.div>
+            </AnimatePresence>
+        </div>
+
+        <Waveform isSpeaking={isSpeaking} />
+        <StatusPip isSpeaking={isSpeaking} />
+    </div>
+))
+MascotBlock.displayName = 'MascotBlock'
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 
@@ -245,6 +461,30 @@ export default function AudioLessonInterface({
     const [recordingTimeLeft, setRecordingTimeLeft] = useState<number | null>(null)
     const [userRoleNorm, setUserRoleNorm] = useState<string | null>(null)
     const [aiRoleNorm, setAiRoleNorm] = useState<string | null>(null)
+
+    // Auto Scroll Down
+    const chatContainerRef = useRef<HTMLDivElement | null>(null)
+    useEffect(() => {
+        if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop =
+                chatContainerRef.current.scrollHeight
+        }
+    }, [messages])
+
+
+    // ── NEW: avatar state + mouse tracking ───────────────────────────────────
+    const [avatarId, setAvatarId] = useState<AvatarId>('lingua')
+    const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
+
+    useEffect(() => {
+        const fn = (e: MouseEvent) => setMousePos({
+            x: (e.clientX / window.innerWidth) * 2 - 1,
+            y: (e.clientY / window.innerHeight) * 2 - 1,
+        })
+        window.addEventListener('mousemove', fn)
+        return () => window.removeEventListener('mousemove', fn)
+    }, [])
+    // ─────────────────────────────────────────────────────────────────────────
 
     const STORAGE_KEY = 'selected-language-code'
     const excludedLanguages = ['fr-FR', 'es-ES', 'ar-SA', 'es-US', 'zh-CH', 'zh-CN']
@@ -780,8 +1020,13 @@ export default function AudioLessonInterface({
 
     return (
         <div className="w-full max-w-4xl mx-auto">
-            {/* Mascot */}
-            <Mascot isSpeaking={isListening} />
+            {/* ── Mascot with avatar switcher ── */}
+            <MascotBlock
+                isSpeaking={isListening}
+                avatarId={avatarId}
+                onAvatarChange={setAvatarId}
+                mousePos={mousePos}
+            />
 
             {/* Language & Voice */}
             <div className="flex flex-wrap items-end gap-4 mb-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
@@ -857,7 +1102,10 @@ export default function AudioLessonInterface({
             </div>
 
             {/* Conversation Transcript */}
-            <div className="bg-white dark:bg-slate-900 border border-[#e7edf3] dark:border-slate-800 rounded-lg p-6 mb-6 max-h-96 overflow-y-auto">
+            <div
+                ref={chatContainerRef}
+                className="bg-white dark:bg-slate-900 border border-[#e7edf3] dark:border-slate-800 rounded-lg p-6 mb-6 max-h-96 overflow-y-auto"
+            >
                 <div className="space-y-4">
                     {messages.map((msg) => (
                         <div key={msg.id} className={`flex ${msg.speaker === 'user' ? 'justify-end' : 'justify-start'}`}>

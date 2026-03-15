@@ -101,7 +101,9 @@ export default function CoursePage({
                       {index + 1}
                     </span>
                         <div>
-                          <h3 className="font-bold text-[#0d141b] dark:text-white">
+                          <h3 className="font-bold text-[#0d141b] dark:text-white
+text-sm sm:text-base md:text-lg lg:text-xl
+leading-snug break-words">
                             {lesson.title}
                           </h3>
                           <p className="text-sm text-[#4c739a]">{lesson.duration} minutes</p>

@@ -1,20 +1,9 @@
 'use client'
 
-import { useState, useEffect, useRef, memo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useState, useEffect, useRef } from 'react'
 import { VoiceRecorder, TextToSpeech } from '@/lib/voice-recorder'
 import type { LessonConversation, ConversationMessage, ConversationTurn } from '@/lib/types'
-import {
-    SUPPORTED_LANGUAGES,
-    VOICE_AGENTS,
-    LANGUAGE_LABELS,
-    getVoiceAgentsForLanguage,
-    getDefaultVoiceAgentForLang,
-    loadBrowserVoices,
-    hasVoiceForLang,
-    type VoiceAgent,
-} from '@/lib/voice-config'
-import { t, getUILocale } from '@/lib/i18n/audio-lesson'
+import { LANGUAGE_LABELS, loadBrowserVoices } from '@/lib/voice-config'
 import {
     Select,
     SelectContent,
@@ -22,7 +11,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
-import { Label } from '@/components/ui/label'
+import { Settings, Mic, Square, Play, StopCircle, Volume2 } from 'lucide-react'
 
 interface AudioLessonInterfaceProps {
     conversation: LessonConversation
@@ -34,11 +23,8 @@ interface AudioLessonInterfaceProps {
 }
 
 const DEFAULT_LANG = 'en-US'
-const USER_ROLE_ALIASES = ['passenger', 'user', 'you', 'student', 'customer', 'learner', 'friend']
-const AI_ROLE_ALIASES = ['officer', 'ai', 'agent', 'system', 'teacher', 'assistant', 'me']
-
-// ─── Avatar type ──────────────────────────────────────────────────────────────
-type AvatarId = 'lingua' | 'jelly'
+const USER_ROLE_ALIASES = ['passenger','user','you','student','customer','learner','friend']
+const AI_ROLE_ALIASES   = ['officer','ai','agent','system','teacher','assistant','me']
 
 function getTurnText(turn: ConversationTurn | undefined, lang: string): string {
     if (!turn) return ''
@@ -48,7 +34,7 @@ function getTurnText(turn: ConversationTurn | undefined, lang: string): string {
     if (exact != null && exact !== '') return exact
     const prefix = lang.split('-')[0]?.toLowerCase()
     if (prefix) {
-        const variant = Object.keys(byLang).find((k) => k.toLowerCase().startsWith(prefix))
+        const variant = Object.keys(byLang).find(k => k.toLowerCase().startsWith(prefix))
         if (variant && byLang[variant]) return byLang[variant]
     }
     return turn.text
@@ -61,381 +47,552 @@ function getRomanization(turn: ConversationTurn | undefined, lang: string): stri
     if (exact != null && exact !== '') return exact
     const prefix = lang.split('-')[0]?.toLowerCase()
     if (prefix) {
-        const variant = Object.keys(byLang).find((k) => k.toLowerCase().startsWith(prefix))
+        const variant = Object.keys(byLang).find(k => k.toLowerCase().startsWith(prefix))
         if (variant && byLang[variant]) return byLang[variant]
     }
     return ''
 }
 
-function normalizeRole(r?: string) {
-    return (r ?? '').trim().toLowerCase()
+function normalizeRole(r?: string) { return (r ?? '').trim().toLowerCase() }
+function formatTime(s: number) {
+    return `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`
+}
+function cleanVoiceName(n: string) {
+    return n.replace(/Microsoft\s*/gi,'').replace(/Google\s*/gi,'').replace(/Apple\s*/gi,'')
+        .replace(/Online\s*\(Natural\)\s*/gi,'').replace(/\(.*?\)/g,'').trim()
 }
 
+/* ─── CSS ──────────────────────────────────────────────────────────────────── */
+const STYLES = `
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&display=swap');
 
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-// ─── Animation constants ──────────────────────────────────────────────────────
+.lx {
+  /* ── Palette ── */
+  --blue-50:   #EFF6FF;
+  --blue-100:  #DBEAFE;
+  --blue-200:  #BFDBFE;
+  --blue-300:  #93C5FD;
+  --blue-400:  #60A5FA;
+  --blue-500:  #3B82F6;
+  --blue-600:  #2563EB;
+  --blue-700:  #1D4ED8;
+  --blue-800:  #1E40AF;
+  --blue-900:  #1E3A8A;
 
-const SQUISH_ANIMATE_SPEAKING = {
-    scaleX: [1, 1.07, 0.95, 1.04, 1],
-    scaleY: [1, 0.94, 1.06, 0.97, 1],
-}
-const SQUISH_ANIMATE_IDLE = { scaleX: 1, scaleY: 1 }
-const SQUISH_TRANSITION_SPEAKING = { duration: 0.38, repeat: Infinity, ease: 'easeInOut' as const }
-const SQUISH_TRANSITION_IDLE = { duration: 0 }
+  --slate-50:  #F8FAFC;
+  --slate-100: #F1F5F9;
+  --slate-200: #E2E8F0;
+  --slate-300: #CBD5E1;
+  --slate-400: #94A3B8;
+  --slate-500: #64748B;
+  --slate-600: #475569;
+  --slate-700: #334155;
+  --slate-800: #1E293B;
+  --slate-900: #0F172A;
 
-const MOUTH_SMILE = "M 35 58 Q 50 66 65 58"
-const MOUTH_OPEN  = "M 35 58 Q 50 70 65 58"
-const MOUTH_MID   = "M 35 58 Q 50 63 65 58"
-const MOUTH_WIDE  = "M 35 59 Q 50 74 65 59"
+  --red-50:    #FEF2F2;
+  --red-400:   #F87171;
+  --red-500:   #EF4444;
+  --red-600:   #DC2626;
 
-const MOUTH_ANIMATE_SPEAKING = { d: [MOUTH_OPEN, MOUTH_MID, MOUTH_WIDE, MOUTH_SMILE] }
-const MOUTH_ANIMATE_IDLE = { d: MOUTH_SMILE }
-const MOUTH_TRANSITION_SPEAKING = { duration: 0.22, repeat: Infinity, ease: 'easeInOut' as const }
-const MOUTH_TRANSITION_IDLE = { duration: 0 }
+  --green-50:  #F0FDF4;
+  --green-400: #4ADE80;
+  --green-500: #22C55E;
+  --green-600: #16A34A;
 
-const PULSE_ANIMATE = { scale: [1, 1.35], opacity: [0.5, 0] }
-const PULSE_TRANSITION = { duration: 1, repeat: Infinity, ease: 'easeOut' as const }
+  /* ── Semantic ── */
+  --bg:        var(--slate-50);
+  --bg-alt:    #FFFFFF;
+  --surface:   #FFFFFF;
+  --surface-2: var(--slate-50);
+  --surface-3: var(--blue-50);
+  --border:    var(--slate-200);
+  --border-2:  var(--slate-300);
+  --brand:     var(--blue-600);
+  --brand-lt:  var(--blue-500);
+  --brand-dk:  var(--blue-700);
+  --brand-bg:  var(--blue-50);
+  --brand-bdr: var(--blue-200);
 
-const PIP_ANIMATE_SPEAKING = { scale: [1, 1.4, 1], opacity: 1 }
-const PIP_ANIMATE_IDLE     = { scale: 1,            opacity: 0.3 }
-const PIP_TRANSITION_SPEAKING = { duration: 0.6, repeat: Infinity, ease: 'easeInOut' as const }
-const PIP_TRANSITION_IDLE     = { duration: 0 }
+  --text:      var(--slate-900);
+  --text-2:    var(--slate-700);
+  --text-3:    var(--slate-500);
+  --text-4:    var(--slate-400);
 
-const WAVE_HEIGHTS = [0.5, 0.9, 1.3, 0.7, 1.5, 0.8, 1.1, 0.55]
+  /* ── Radii ── */
+  --r-xs: 8px;
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 20px;
+  --r-xl: 28px;
 
-const MASCOT_COLOR = '#5B9BF5'
-const MASCOT_SHAPE = "M50,10 C74,9 91,26 91,50 C91,74 74,91 50,91 C26,91 9,74 9,50 C9,26 26,11 50,10Z"
+  /* ── Shadows ── */
+  --shadow-xs: 0 1px 2px rgba(15,23,42,.04);
+  --shadow-sm: 0 1px 4px rgba(15,23,42,.06), 0 2px 8px rgba(15,23,42,.04);
+  --shadow-md: 0 4px 12px rgba(15,23,42,.08), 0 2px 4px rgba(15,23,42,.04);
+  --shadow-lg: 0 8px 24px rgba(15,23,42,.10), 0 2px 6px rgba(15,23,42,.05);
+  --shadow-brand: 0 4px 16px rgba(37,99,235,.30), 0 1px 3px rgba(37,99,235,.15);
 
-// ─── Avatar 1: LinguaPals blob (original) ────────────────────────────────────
-
-const LinguaFace = memo(({ isSpeaking }: { isSpeaking: boolean }) => (
-    <motion.div
-        animate={isSpeaking ? SQUISH_ANIMATE_SPEAKING : SQUISH_ANIMATE_IDLE}
-        transition={isSpeaking ? SQUISH_TRANSITION_SPEAKING : SQUISH_TRANSITION_IDLE}
-        style={{ width: 120, height: 120, transformOrigin: 'center center' }}
-    >
-        <svg viewBox="0 0 100 100" width="120" height="120" style={{ overflow: 'visible' }}>
-            <defs>
-                <radialGradient id="shine-lingua" cx="38%" cy="32%" r="55%">
-                    <stop offset="0%" stopColor="white" stopOpacity="0.35" />
-                    <stop offset="100%" stopColor={MASCOT_COLOR} stopOpacity="0" />
-                </radialGradient>
-            </defs>
-            <path d={MASCOT_SHAPE} fill={MASCOT_COLOR} />
-            <path d={MASCOT_SHAPE} fill="url(#shine-lingua)" />
-            <g>
-                <ellipse cx="36" cy="42" rx="6" ry="7" fill="white" />
-                <ellipse cx="64" cy="42" rx="6" ry="7" fill="white" />
-                <circle cx="37.5" cy="43.5" r="3.2" fill="#111" />
-                <circle cx="65.5" cy="43.5" r="3.2" fill="#111" />
-                <circle cx="39" cy="41.5" r="1.3" fill="white" />
-                <circle cx="67" cy="41.5" r="1.3" fill="white" />
-            </g>
-            <motion.path
-                d={MOUTH_SMILE}
-                fill="none"
-                stroke="white"
-                strokeWidth="3.5"
-                strokeLinecap="round"
-                animate={isSpeaking ? MOUTH_ANIMATE_SPEAKING : MOUTH_ANIMATE_IDLE}
-                transition={isSpeaking ? MOUTH_TRANSITION_SPEAKING : MOUTH_TRANSITION_IDLE}
-            />
-            <ellipse cx="25" cy="57" rx="8" ry="5.5" fill="white" opacity="0.15" />
-            <ellipse cx="75" cy="57" rx="8" ry="5.5" fill="white" opacity="0.15" />
-        </svg>
-    </motion.div>
-))
-LinguaFace.displayName = 'LinguaFace'
-
-// ─── Avatar 2: Jelly blob (morphing, mouse-tracking) ─────────────────────────
-
-const JELLY_BORDER_RADIUS_FRAMES = [
-    '60% 40% 30% 70% / 60% 30% 70% 40%',
-    '30% 60% 70% 40% / 50% 60% 30% 60%',
-    '60% 40% 30% 70% / 60% 30% 70% 40%',
-]
-
-interface JellyFaceProps {
-    isSpeaking: boolean
-    mousePos: { x: number; y: number }
+  font-family: 'Geist', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  color: var(--text);
+  background: var(--bg);
 }
 
-const JellyFace = memo(({ isSpeaking, mousePos }: JellyFaceProps) => {
-    const lookX = mousePos.x * 5
-    const lookY = mousePos.y * 4
-
-    return (
-        <motion.div
-            animate={isSpeaking ? SQUISH_ANIMATE_SPEAKING : SQUISH_ANIMATE_IDLE}
-            transition={isSpeaking ? SQUISH_TRANSITION_SPEAKING : SQUISH_TRANSITION_IDLE}
-            style={{ width: 120, height: 120, transformOrigin: 'center center' }}
-        >
-            <motion.div
-                animate={{ borderRadius: JELLY_BORDER_RADIUS_FRAMES }}
-                transition={{ borderRadius: { repeat: Infinity, duration: 5, ease: 'linear' } }}
-                style={{
-                    width: '100%',
-                    height: '100%',
-                    background: MASCOT_COLOR,
-                    position: 'relative',
-                    overflow: 'hidden',
-                }}
-            >
-                {/* Shine overlay */}
-                <div style={{
-                    position: 'absolute', inset: 0, borderRadius: 'inherit',
-                    background: 'radial-gradient(circle at 38% 28%, rgba(255,255,255,0.32) 0%, transparent 58%)',
-                    pointerEvents: 'none',
-                }} />
-                <div style={{
-                    position: 'absolute', inset: 0, borderRadius: 'inherit',
-                    borderTop: '6px solid rgba(255,255,255,0.2)',
-                    pointerEvents: 'none',
-                }} />
-
-                {/* Face */}
-                <div style={{
-                    position: 'absolute', inset: 0,
-                    display: 'flex', flexDirection: 'column',
-                    alignItems: 'center', justifyContent: 'center',
-                    paddingBottom: 8,
-                }}>
-                    {/* Eyes */}
-                    <div style={{ display: 'flex', gap: 20, marginBottom: 8 }}>
-                        {[0, 1].map((i) => (
-                            <motion.div
-                                key={i}
-                                style={{
-                                    width: 18, height: 24,
-                                    background: 'white', borderRadius: '50%',
-                                    position: 'relative', overflow: 'hidden',
-                                }}
-                                animate={{ scaleY: [1, 1, 0.08, 1] }}
-                                transition={{
-                                    repeat: Infinity, duration: 3.5,
-                                    times: [0, 0.88, 0.93, 1], delay: i * 0.1,
-                                }}
-                            >
-                                <div style={{
-                                    position: 'absolute', top: 4, left: 4,
-                                    width: 8, height: 8,
-                                    background: '#111', borderRadius: '50%',
-                                }} />
-                                <motion.div style={{
-                                    position: 'absolute', top: 3, left: 3,
-                                    width: 4, height: 4,
-                                    background: 'white', borderRadius: '50%',
-                                    x: lookX, y: lookY,
-                                }} />
-                            </motion.div>
-                        ))}
-                    </div>
-
-                    {/* Mouth */}
-                    <motion.div
-                        style={{ background: 'white', borderRadius: 50, opacity: 0.92 }}
-                        animate={isSpeaking
-                            ? { width: [20, 28, 20], height: [7, 20, 7] }
-                            : { width: 18, height: 6 }}
-                        transition={{ repeat: isSpeaking ? Infinity : 0, duration: 0.2 }}
-                    />
-                </div>
-            </motion.div>
-        </motion.div>
-    )
-})
-JellyFace.displayName = 'JellyFace'
-
-// ─── Avatar switcher pill ─────────────────────────────────────────────────────
-
-interface AvatarSwitcherProps {
-    activeId: AvatarId
-    onChange: (id: AvatarId) => void
+/* ── Responsive ── */
+@media (max-width: 767px) {
+  .lx {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .lx-desktop { display: none !important; }
+  .lx-mobile  { display: flex !important; flex: 1 1 0; min-height: 0; flex-direction: column; }
+}
+@media (min-width: 768px) {
+  .lx { background: transparent; width: 100%; }
+  .lx-mobile  { display: none !important; }
+  .lx-desktop { display: grid !important; }
 }
 
-const AvatarSwitcher = memo(({ activeId, onChange }: AvatarSwitcherProps) => (
-    <div style={{
-        display: 'inline-flex', gap: 4, padding: 4,
-        background: 'rgba(255,255,255,0.85)',
-        borderRadius: 999,
-        border: '1px solid rgba(91,155,245,0.18)',
-        boxShadow: '0 2px 10px rgba(91,155,245,0.1)',
-    }}>
-        {([
-            { id: 'lingua' as AvatarId, label: '🇫🇷 LinguaPals' },
-            { id: 'jelly'  as AvatarId, label: '🫧 Jelly Friend' },
-        ]).map(({ id, label }) => (
-            <button
-                key={id}
-                onClick={() => onChange(id)}
-                style={{
-                    padding: '6px 16px',
-                    borderRadius: 999,
-                    fontWeight: 800,
-                    fontSize: 12,
-                    letterSpacing: '0.03em',
-                    border: 'none',
-                    cursor: 'pointer',
-                    transition: 'all 0.22s ease',
-                    background: activeId === id ? MASCOT_COLOR : 'transparent',
-                    color: activeId === id ? '#fff' : 'rgba(0,0,0,0.45)',
-                    boxShadow: activeId === id ? '0 3px 12px rgba(91,155,245,0.4)' : 'none',
-                }}
-            >
-                {label}
-            </button>
-        ))}
-    </div>
-))
-AvatarSwitcher.displayName = 'AvatarSwitcher'
-
-// ─── Waveform ─────────────────────────────────────────────────────────────────
-
-const Waveform = memo(({ isSpeaking }: { isSpeaking: boolean }) => (
-    <>
-        <style>{`
-            @keyframes wave-bar {
-                from { transform: scaleY(0.3); }
-                to   { transform: scaleY(1); }
-            }
-        `}</style>
-        <div className="flex items-center gap-1 h-7">
-            {WAVE_HEIGHTS.map((h, i) => (
-                <div
-                    key={i}
-                    style={{
-                        width: 2,
-                        height: isSpeaking ? `${Math.round(h * 16)}px` : '4px',
-                        background: MASCOT_COLOR,
-                        borderRadius: 9999,
-                        opacity: isSpeaking ? 0.9 : 0.25,
-                        transformOrigin: 'center',
-                        transition: 'height 0.3s ease, opacity 0.3s ease',
-                        animationName: isSpeaking ? 'wave-bar' : 'none',
-                        animationDuration: `${0.38 + i * 0.055}s`,
-                        animationTimingFunction: 'ease-in-out',
-                        animationIterationCount: 'infinite',
-                        animationDirection: 'alternate',
-                        animationDelay: `${i * 0.06}s`,
-                    }}
-                />
-            ))}
-        </div>
-    </>
-))
-Waveform.displayName = 'Waveform'
-
-// ─── StatusPip ────────────────────────────────────────────────────────────────
-
-const StatusPip = memo(({ isSpeaking }: { isSpeaking: boolean }) => (
-    <div className="flex items-center gap-1.5 bg-[#5B9BF5]/10 border border-[#5B9BF5]/20 px-3 py-1 rounded-full">
-        <motion.div
-            animate={isSpeaking ? PIP_ANIMATE_SPEAKING : PIP_ANIMATE_IDLE}
-            transition={isSpeaking ? PIP_TRANSITION_SPEAKING : PIP_TRANSITION_IDLE}
-            className="w-1.5 h-1.5 rounded-full bg-[#5B9BF5]"
-            style={{ boxShadow: '0 0 8px #5B9BF5' }}
-        />
-        <span className="text-xs font-bold text-[#5B9BF5] uppercase tracking-wider">
-            {isSpeaking ? 'Speaking' : 'Ready'}
-        </span>
-    </div>
-))
-StatusPip.displayName = 'StatusPip'
-
-// ─── Mascot container — renders active avatar, never remounts shell ───────────
-
-interface MascotProps {
-    isSpeaking: boolean
-    avatarId: AvatarId
-    mousePos: { x: number; y: number }
+/* ════════════════════════════════
+   PROGRESS BAR
+════════════════════════════════ */
+.lx-progress { height: 3px; background: var(--blue-100); flex-shrink: 0; }
+.lx-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--blue-500), var(--blue-700));
+  transition: width 0.45s cubic-bezier(.4,0,.2,1);
+  box-shadow: 0 0 6px rgba(37,99,235,.35);
 }
 
-const Mascot = memo(({ isSpeaking, avatarId, mousePos }: MascotProps) => (
-    <div className="flex flex-col items-center gap-3 mb-4">
-        {/* Avatar switcher */}
-        <AvatarSwitcher
-            activeId={avatarId}
-            // onChange is passed from parent — see usage below
-            // We re-expose it via a context trick; simpler: pass it as prop
-            onChange={() => {}} // overridden in MascotWithSwitcher
-        />
+/* ════════════════════════════════
+   TOP NAV (mobile)
+════════════════════════════════ */
+.lx-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  box-shadow: var(--shadow-xs);
+}
+.lx-nav-title { font-size: 14px; font-weight: 700; color: var(--text); letter-spacing: -0.015em; }
+.lx-nav-sub   { font-size: 11px; color: var(--text-4); margin-top: 1px; }
+.lx-nav-right { display: flex; align-items: center; gap: 10px; }
+.lx-timer-chip {
+  font-size: 12px; font-weight: 600; color: var(--brand);
+  font-family: 'Geist Mono', monospace;
+  background: var(--brand-bg); border: 1px solid var(--brand-bdr);
+  padding: 4px 10px; border-radius: 99px;
+}
+.lx-icon-btn {
+  width: 34px; height: 34px; border-radius: var(--r-xs);
+  border: 1px solid var(--border); background: var(--surface);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--text-3);
+  box-shadow: var(--shadow-xs);
+  transition: background .12s, border-color .12s, color .12s;
+}
+.lx-icon-btn:hover { background: var(--slate-100); border-color: var(--border-2); color: var(--text-2); }
 
-        {/* Character */}
-        <div className="relative flex items-center justify-center mt-2">
-            {isSpeaking && (
-                <motion.div
-                    className="absolute w-36 h-36 rounded-full border-2 border-[#5B9BF5] opacity-50"
-                    animate={PULSE_ANIMATE}
-                    transition={PULSE_TRANSITION}
-                />
-            )}
-            <AnimatePresence mode="wait">
-                <motion.div
-                    key={avatarId}
-                    initial={{ opacity: 0, scale: 0.82 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.82 }}
-                    transition={{ duration: 0.25, ease: 'easeInOut' }}
-                >
-                    {avatarId === 'lingua'
-                        ? <LinguaFace isSpeaking={isSpeaking} />
-                        : <JellyFace  isSpeaking={isSpeaking} mousePos={mousePos} />
-                    }
-                </motion.div>
-            </AnimatePresence>
-        </div>
+/* ════════════════════════════════
+   SCROLL AREA
+════════════════════════════════ */
+.lx-scroll {
+  flex: 1 1 0; min-height: 0; overflow-y: auto;
+  padding: 16px 15px 8px;
+  display: flex; flex-direction: column; gap: 10px;
+  scrollbar-width: none;
+  background: var(--bg);
+}
+.lx-scroll::-webkit-scrollbar { display: none; }
 
-        <Waveform isSpeaking={isSpeaking} />
-        <StatusPip isSpeaking={isSpeaking} />
-    </div>
-))
-Mascot.displayName = 'Mascot'
+/* ════════════════════════════════
+   STATUS PILL
+════════════════════════════════ */
+.lx-status-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 2px;
+}
+.lx-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: 99px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+  border: 1px solid transparent;
+}
+.lx-pill.idle  { background: var(--slate-100); color: var(--text-3); border-color: var(--border); }
+.lx-pill.speak { background: var(--blue-50);   color: var(--blue-600); border-color: var(--blue-200); }
+.lx-pill.rec   { background: var(--red-50);    color: var(--red-600);  border-color: #FCA5A5; }
+.lx-pill.proc  { background: var(--green-50);  color: var(--green-600); border-color: #86EFAC; }
+.lx-pill.count { background: #FFFBEB; color: #D97706; border-color: #FCD34D; }
+.lx-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.lx-pill.rec .lx-dot   { animation: lxBlink .85s ease-in-out infinite; }
+.lx-pill.speak .lx-dot { animation: lxPulse 1.2s ease-in-out infinite; }
+@keyframes lxBlink { 0%,100%{opacity:1} 50%{opacity:.15} }
+@keyframes lxPulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.7);opacity:.4} }
+.lx-pct { font-size: 11px; font-weight: 500; color: var(--text-4); }
 
-// ─── Full Mascot block with switcher wired to parent state ────────────────────
-
-interface MascotBlockProps {
-    isSpeaking: boolean
-    avatarId: AvatarId
-    onAvatarChange: (id: AvatarId) => void
-    mousePos: { x: number; y: number }
+/* ════════════════════════════════
+   AI PROMPT CARD
+════════════════════════════════ */
+.lx-prompt-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-sm);
+  position: relative; overflow: hidden;
+}
+.lx-prompt-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--blue-400), var(--blue-700));
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+}
+.lx-prompt-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--blue-500);
+  margin-bottom: 9px; display: flex; align-items: center; gap: 5px;
+}
+.lx-prompt-text {
+  font-size: 15px; font-weight: 500; color: var(--text); line-height: 1.7;
+}
+.lx-prompt-text::before { content: '"'; color: var(--blue-400); margin-right: 1px; }
+.lx-prompt-text::after  { content: '"'; color: var(--blue-400); margin-left: 1px; }
+.lx-prompt-rom { font-size: 12px; color: var(--text-4); margin-top: 7px; font-style: italic; }
+.lx-prompt-en  {
+  font-size: 12px; color: var(--text-4); margin-top: 7px;
+  padding-top: 8px; border-top: 1px solid var(--border);
 }
 
-const MascotBlock = memo(({ isSpeaking, avatarId, onAvatarChange, mousePos }: MascotBlockProps) => (
-    <div className="flex flex-col items-center gap-3 mb-6">
-        <AvatarSwitcher activeId={avatarId} onChange={onAvatarChange} />
+/* ════════════════════════════════
+   YOUR LINE CARD
+════════════════════════════════ */
+.lx-say-card {
+  background: linear-gradient(145deg, var(--blue-50) 0%, #EFF8FF 100%);
+  border: 1.5px solid var(--blue-200);
+  border-radius: var(--r-lg);
+  padding: 16px 18px;
+  box-shadow: 0 2px 8px rgba(37,99,235,.08);
+  position: relative; overflow: hidden;
+}
+.lx-say-card::after {
+  content: ''; position: absolute; top: -40px; right: -40px;
+  width: 120px; height: 120px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(37,99,235,.07) 0%, transparent 70%);
+  pointer-events: none;
+}
+.lx-say-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--blue-600);
+  margin-bottom: 9px; display: flex; align-items: center; gap: 6px;
+}
+.lx-say-badge {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--blue-100); border: 1px solid var(--blue-200);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 8px; color: var(--blue-600); font-weight: 700;
+}
+.lx-say-text { font-size: 16px; font-weight: 600; color: var(--text); line-height: 1.65; position: relative; z-index: 1; }
+.lx-say-rom  { font-size: 12px; color: var(--blue-500); margin-top: 6px; font-style: italic; position: relative; z-index: 1; }
+.lx-say-en   { font-size: 12px; color: var(--text-4); margin-top: 6px; padding-top: 7px; border-top: 1px solid var(--blue-200); position: relative; z-index: 1; }
 
-        <div className="relative flex items-center justify-center mt-2">
-            {isSpeaking && (
-                <motion.div
-                    className="absolute w-36 h-36 rounded-full border-2 border-[#5B9BF5] opacity-50"
-                    animate={PULSE_ANIMATE}
-                    transition={PULSE_TRANSITION}
-                />
-            )}
-            <AnimatePresence mode="wait">
-                <motion.div
-                    key={avatarId}
-                    initial={{ opacity: 0, scale: 0.82 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.82 }}
-                    transition={{ duration: 0.25, ease: 'easeInOut' }}
-                >
-                    {avatarId === 'lingua'
-                        ? <LinguaFace isSpeaking={isSpeaking} />
-                        : <JellyFace  isSpeaking={isSpeaking} mousePos={mousePos} />
-                    }
-                </motion.div>
-            </AnimatePresence>
-        </div>
+/* ════════════════════════════════
+   RECORDING TIMER
+════════════════════════════════ */
+.lx-timer-wrap {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: 13px 15px;
+  box-shadow: var(--shadow-xs);
+}
+.lx-timer-bar  { height: 4px; background: var(--slate-100); border-radius: 99px; overflow: hidden; }
+.lx-timer-fill {
+  height: 100%; border-radius: 99px;
+  background: linear-gradient(90deg, var(--blue-500), var(--blue-400));
+  transition: width .5s linear, background .3s;
+}
+.lx-timer-fill.urgent { background: linear-gradient(90deg, var(--red-500), var(--red-400)); }
+.lx-timer-label {
+  font-size: 11px; font-weight: 500; color: var(--text-3); margin-top: 6px;
+  display: flex; align-items: center; justify-content: space-between;
+  font-family: 'Geist Mono', monospace;
+}
+.lx-live-tx {
+  margin-top: 10px; padding: 10px 12px;
+  background: var(--slate-50); border-radius: var(--r-xs);
+  font-size: 13px; color: var(--text-2); font-style: italic;
+  line-height: 1.55; min-height: 40px; border: 1px solid var(--border);
+}
 
-        <Waveform isSpeaking={isSpeaking} />
-        <StatusPip isSpeaking={isSpeaking} />
-    </div>
-))
-MascotBlock.displayName = 'MascotBlock'
+/* ════════════════════════════════
+   BOTTOM CONTROLS (mobile)
+════════════════════════════════ */
+.lx-bottom {
+  flex-shrink: 0;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 16px 18px 36px;
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  box-shadow: 0 -4px 20px rgba(15,23,42,.06);
+}
+.lx-controls-row { display: flex; align-items: center; justify-content: center; gap: 14px; width: 100%; }
 
-// ─── Main Component ────────────────────────────────────────────────────────────
+/* Mic button */
+.lx-mic-btn {
+  width: 66px; height: 66px; border-radius: 50%; border: none;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  position: relative; -webkit-tap-highlight-color: transparent;
+  transition: transform .12s, box-shadow .15s;
+}
+.lx-mic-btn.start {
+  background: linear-gradient(145deg, var(--blue-500), var(--blue-700));
+  box-shadow: var(--shadow-brand);
+  color: white;
+}
+.lx-mic-btn.start:hover  { transform: scale(1.06); box-shadow: 0 6px 24px rgba(37,99,235,.45); }
+.lx-mic-btn.start:active { transform: scale(0.94); }
+.lx-mic-btn.stop {
+  background: linear-gradient(145deg, var(--red-400), var(--red-600));
+  box-shadow: 0 4px 16px rgba(239,68,68,.35);
+  color: white;
+}
+.lx-mic-btn.stop:hover  { transform: scale(1.06); }
+.lx-mic-btn.stop:active { transform: scale(0.94); }
 
+/* Pulse rings when recording */
+.lx-ring1 {
+  position: absolute; inset: -9px; border-radius: 50%;
+  border: 2px solid rgba(239,68,68,.3);
+  animation: lxRipple 1.5s ease-out infinite; pointer-events: none;
+}
+.lx-ring2 {
+  position: absolute; inset: -18px; border-radius: 50%;
+  border: 1.5px solid rgba(239,68,68,.15);
+  animation: lxRipple 1.5s ease-out .5s infinite; pointer-events: none;
+}
+@keyframes lxRipple { 0%{transform:scale(.86);opacity:.9} 100%{transform:scale(1.5);opacity:0} }
+
+.lx-state-btn {
+  flex: 1; max-width: 200px; height: 50px; border-radius: var(--r-md);
+  border: 1px solid var(--border); background: var(--surface);
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  font-family: 'Geist', sans-serif; font-size: 13px; font-weight: 600;
+  color: var(--text-3); pointer-events: none; box-shadow: var(--shadow-xs);
+}
+.lx-btn-hint { font-size: 11px; font-weight: 500; color: var(--text-4); letter-spacing: .015em; text-align: center; }
+
+/* ════════════════════════════════
+   WAVE BARS
+════════════════════════════════ */
+.lx-wave { display: flex; align-items: center; gap: 3px; }
+.lx-wave-bar {
+  width: 3px; border-radius: 99px;
+  background: linear-gradient(180deg, var(--blue-400), var(--blue-600));
+  animation: lxWave var(--dur) ease-in-out var(--delay) infinite alternate;
+}
+@keyframes lxWave { from{transform:scaleY(.1)} to{transform:scaleY(1)} }
+
+/* ════════════════════════════════
+   DESKTOP GRID
+════════════════════════════════ */
+.lx-desktop {
+  grid-template-columns: 280px 1fr;
+  gap: 20px; align-items: start; width: 100%;
+}
+.lx-sidebar { display: flex; flex-direction: column; gap: 12px; }
+
+.lx-panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 18px;
+  box-shadow: var(--shadow-sm);
+}
+.lx-panel-title {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-4); margin-bottom: 14px;
+}
+.lx-session-name { font-size: 15px; font-weight: 700; color: var(--text); line-height: 1.4; margin-bottom: 3px; }
+.lx-session-meta { font-size: 12px; color: var(--text-3); margin-bottom: 12px; }
+.lx-desk-timer {
+  font-size: 32px; font-weight: 800; color: var(--brand);
+  font-family: 'Geist Mono', monospace;
+  letter-spacing: -0.03em; line-height: 1; margin-bottom: 2px;
+}
+.lx-desk-timer-lbl { font-size: 10px; color: var(--text-4); letter-spacing: .05em; text-transform: uppercase; }
+
+/* ── Chat feed ── */
+.lx-chat {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 16px;
+  max-height: 340px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px;
+  box-shadow: var(--shadow-sm);
+  scrollbar-width: thin; scrollbar-color: var(--slate-200) transparent;
+}
+.lx-chat::-webkit-scrollbar { width: 3px; }
+.lx-chat::-webkit-scrollbar-thumb { background: var(--slate-200); border-radius: 99px; }
+.lx-chat-empty { text-align: center; color: var(--text-4); font-size: 12px; padding: 24px 0; }
+
+.lx-bw { display: flex; flex-direction: column; max-width: 80%; }
+.lx-bw.ai   { align-self: flex-start; }
+.lx-bw.user { align-self: flex-end; }
+.lx-brole {
+  font-size: 9px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; margin-bottom: 4px; padding: 0 4px;
+}
+.lx-bw.ai   .lx-brole { color: var(--blue-400); }
+.lx-bw.user .lx-brole { color: var(--blue-500); text-align: right; }
+
+.lx-bubble { padding: 10px 14px; border-radius: 16px; font-size: 13.5px; line-height: 1.6; }
+.lx-bubble.ai {
+  background: var(--slate-50); color: var(--text);
+  border: 1px solid var(--border); border-top-left-radius: 4px;
+}
+.lx-bubble.user {
+  background: linear-gradient(135deg, var(--blue-600), var(--blue-700));
+  color: white; border-top-right-radius: 4px;
+  box-shadow: 0 2px 10px rgba(37,99,235,.25);
+}
+.lx-brom { font-size: 11px; font-style: italic; opacity: .6; margin-top: 5px; }
+.lx-ben  { font-size: 11px; opacity: .55; margin-top: 4px; }
+
+/* ── Desktop controls ── */
+.lx-ctrl {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 20px;
+  display: flex; flex-direction: column; gap: 14px;
+  box-shadow: var(--shadow-sm);
+}
+.lx-ctrl-status { font-size: 12px; font-weight: 500; color: var(--text-3); }
+
+.lx-desk-rec {
+  padding: 12px 26px; border-radius: var(--r-md); border: none;
+  font-family: 'Geist', sans-serif; font-size: 14px; font-weight: 700;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+  transition: transform .12s, box-shadow .15s, background .15s;
+  align-self: flex-start;
+}
+.lx-desk-rec:active { transform: scale(.97); }
+.lx-desk-rec.start {
+  background: linear-gradient(135deg, var(--blue-500), var(--blue-700));
+  color: white; box-shadow: var(--shadow-brand);
+}
+.lx-desk-rec.start:hover { box-shadow: 0 6px 20px rgba(37,99,235,.4); }
+.lx-desk-rec.stop {
+  background: var(--red-50); color: var(--red-600);
+  border: 1.5px solid #FCA5A5;
+}
+.lx-desk-rec.stop:hover { background: #FEE2E2; }
+
+/* ════════════════════════════════
+   SETTINGS SHEET
+════════════════════════════════ */
+.lx-overlay {
+  position: fixed; inset: 0; background: rgba(15,23,42,.35);
+  backdrop-filter: blur(8px); z-index: 60;
+}
+.lx-sheet {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 61;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px 20px 0 0;
+  padding: 12px 20px 48px;
+  max-height: 80vh; overflow-y: auto;
+  box-shadow: 0 -8px 32px rgba(15,23,42,.12);
+}
+.lx-sheet-handle { width: 36px; height: 3px; background: var(--slate-200); border-radius: 99px; margin: 0 auto 18px; }
+.lx-sheet-title  { font-size: 16px; font-weight: 700; margin-bottom: 18px; }
+.lx-field        { margin-bottom: 14px; }
+.lx-field-label  {
+  display: block; font-size: 10px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text-4); margin-bottom: 7px;
+}
+.lx-sheet-done {
+  width: 100%; padding: 13px; border: none; border-radius: var(--r-md);
+  background: linear-gradient(135deg, var(--blue-500), var(--blue-700));
+  color: white; font-weight: 700; font-size: 15px;
+  font-family: 'Geist', sans-serif; cursor: pointer; margin-top: 8px;
+  box-shadow: var(--shadow-brand);
+}
+
+/* ════════════════════════════════
+   COMPLETION
+════════════════════════════════ */
+.lx-done-hero {
+  background: linear-gradient(145deg, var(--blue-600) 0%, var(--blue-800) 100%);
+  border-radius: var(--r-xl); padding: 28px 24px; text-align: center;
+  color: white; box-shadow: 0 8px 32px rgba(37,99,235,.35);
+  position: relative; overflow: hidden;
+}
+.lx-done-hero::before {
+  content: ''; position: absolute; top: -50px; right: -50px;
+  width: 180px; height: 180px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,.12) 0%, transparent 70%);
+}
+.lx-done-hero::after {
+  content: ''; position: absolute; bottom: -40px; left: -40px;
+  width: 140px; height: 140px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,.08) 0%, transparent 70%);
+}
+.lx-done-check {
+  width: 60px; height: 60px; border-radius: 50%;
+  background: rgba(255,255,255,.2); border: 2px solid rgba(255,255,255,.4);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 14px; font-size: 24px; font-weight: 700;
+}
+.lx-done-title { font-size: 22px; font-weight: 800; margin-bottom: 4px; letter-spacing: -0.02em; }
+.lx-done-sub   { font-size: 13px; opacity: .75; margin-bottom: 20px; }
+.lx-done-stats { display: flex; gap: 1px; border-radius: var(--r-md); overflow: hidden; background: rgba(255,255,255,.15); }
+.lx-done-stat  { flex: 1; padding: 14px 0; text-align: center; background: rgba(255,255,255,.08); }
+.lx-done-num   { font-size: 26px; font-weight: 800; line-height: 1; margin-bottom: 3px; font-family: 'Geist Mono', monospace; }
+.lx-done-nm    { font-size: 10px; opacity: .65; letter-spacing: .06em; text-transform: uppercase; }
+
+.lx-replay-btn {
+  display: flex; align-items: center; gap: 7px;
+  padding: 10px 18px; border: none; border-radius: var(--r-xs);
+  background: linear-gradient(135deg, var(--blue-500), var(--blue-700));
+  color: white; font-family: 'Geist', sans-serif; font-size: 13px; font-weight: 700;
+  cursor: pointer; white-space: nowrap; flex-shrink: 0;
+  box-shadow: var(--shadow-brand);
+  transition: box-shadow .15s;
+}
+.lx-replay-btn:hover { box-shadow: 0 6px 20px rgba(37,99,235,.4); }
+.lx-replay-btn.stop-v {
+  background: var(--red-50); color: var(--red-600);
+  border: 1.5px solid #FCA5A5; box-shadow: none;
+}
+.lx-prog-track { flex: 1; }
+.lx-prog-bar   { height: 3px; background: var(--slate-100); border-radius: 99px; overflow: hidden; }
+.lx-prog-fill  { height: 100%; background: linear-gradient(90deg, var(--blue-500), var(--blue-400)); border-radius: 99px; transition: width .4s; }
+.lx-prog-label { font-size: 10px; color: var(--text-4); margin-top: 4px; font-family: 'Geist Mono', monospace; }
+
+.lx-back-btn {
+  width: 100%; padding: 12px; border: 1px solid var(--border);
+  border-radius: var(--r-md); background: var(--surface); color: var(--text-3);
+  font-family: 'Geist', sans-serif; font-size: 13px; font-weight: 600;
+  cursor: pointer; box-shadow: var(--shadow-xs);
+  transition: background .12s, color .12s;
+}
+.lx-back-btn:hover { background: var(--slate-50); color: var(--text-2); }
+
+.lx-txlist {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 18px;
+  display: flex; flex-direction: column; gap: 10px;
+  box-shadow: var(--shadow-sm);
+}
+.lx-txlist-title {
+  font-size: 10px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text-4); margin-bottom: 6px;
+}
+
+/* Divider */
+.lx-divider { height: 1px; background: var(--border); margin: 4px 0; }
+`
+
+/* ─── Component ─────────────────────────────────────────────────────────────── */
 export default function AudioLessonInterface({
                                                  conversation,
                                                  onComplete,
@@ -443,317 +600,218 @@ export default function AudioLessonInterface({
                                                  defaultVoiceAgentId,
                                                  recordDelaySeconds = 4,
                                              }: AudioLessonInterfaceProps) {
-    const [messages, setMessages] = useState<ConversationMessage[]>([])
-    const [currentTurnIndex, setCurrentTurnIndex] = useState(0)
-    const [isListening, setIsListening] = useState(false)
-    const [isRecording, setIsRecording] = useState(false)
-    const [isProcessing, setIsProcessing] = useState(false)
-    const [conversationEnded, setConversationEnded] = useState(false)
-    const [elapsedTime, setElapsedTime] = useState(0)
-    const [liveTranscript, setLiveTranscript] = useState('')
-    const [isPlayingCombined, setIsPlayingCombined] = useState(false)
-    const [playbackProgress, setPlaybackProgress] = useState(0)
-    const [language, setLanguage] = useState(defaultLanguage)
-    const [voiceAgentId, setVoiceAgentId] = useState<string>(defaultVoiceAgentId ?? '')
-    const [browserVoices, setBrowserVoices] = useState<SpeechSynthesisVoice[]>([])
-    const [countdownActive, setCountdownActive] = useState(false)
-    const [countdownLeft, setCountdownLeft] = useState(0)
-    const [recordingTimeLeft, setRecordingTimeLeft] = useState<number | null>(null)
-    const [userRoleNorm, setUserRoleNorm] = useState<string | null>(null)
-    const [aiRoleNorm, setAiRoleNorm] = useState<string | null>(null)
 
-    // Auto Scroll Down
-    const chatContainerRef = useRef<HTMLDivElement | null>(null)
+    const [messages,        setMessages]       = useState<ConversationMessage[]>([])
+    const [currentTurnIdx,  setCurrentTurnIdx] = useState(0)
+    const [isListening,     setIsListening]    = useState(false)
+    const [isRecording,     setIsRecording]    = useState(false)
+    const [isProcessing,    setIsProcessing]   = useState(false)
+    const [conversationEnd, setConversationEnd]= useState(false)
+    const [elapsedTime,     setElapsedTime]    = useState(0)
+    const [liveTranscript,  setLiveTranscript] = useState('')
+    const [isPlayingAll,    setIsPlayingAll]   = useState(false)
+    const [playPct,         setPlayPct]        = useState(0)
+    const [language,        setLanguage]       = useState(defaultLanguage)
+    const [voiceAgentId,    setVoiceAgentId]   = useState(defaultVoiceAgentId ?? '')
+    const [browserVoices,   setBrowserVoices]  = useState<SpeechSynthesisVoice[]>([])
+    const [countdownActive, setCountdownActive]= useState(false)
+    const [countdownLeft,   setCountdownLeft]  = useState(0)
+    const [recTimeLeft,     setRecTimeLeft]    = useState<number|null>(null)
+    const [userRoleNorm,    setUserRoleNorm]   = useState<string|null>(null)
+    const [aiRoleNorm,      setAiRoleNorm]     = useState<string|null>(null)
+    const [settingsOpen,    setSettingsOpen]   = useState(false)
+    const [savedLang]                          = useState<string|null>(() =>
+        typeof window !== 'undefined' ? localStorage.getItem('selected-language-code') : null)
+
+    const scrollRef     = useRef<HTMLDivElement>(null)
+    const chatScrollRef = useRef<HTMLDivElement>(null)
+    const vrRef         = useRef(new VoiceRecorder())
+    const ttsRef        = useRef(new TextToSpeech())
+    const timerRef      = useRef<NodeJS.Timeout|null>(null)
+    const cdRef         = useRef<NodeJS.Timeout|null>(null)
+    const cdTurnRef     = useRef<number|null>(null)
+    const recTRef       = useRef<NodeJS.Timeout|null>(null)
+    const initialized   = useRef(false)
+    const idxRef        = useRef(0)
+    const isRecRef      = useRef(false)
+    const isListRef     = useRef(false)
+    const isProcRef     = useRef(false)
+    const transcriptRef = useRef('')
+    const langRef       = useRef(defaultLanguage)
+    const uRoleRef      = useRef<string|null>(null)
+    const aRoleRef      = useRef<string|null>(null)
+    const voiceRef      = useRef<SpeechSynthesisVoice|null>(null)
+    const endedRef      = useRef(false)
+
+    useEffect(() => { idxRef.current = currentTurnIdx }, [currentTurnIdx])
+    useEffect(() => { langRef.current = language }, [language])
+    useEffect(() => { uRoleRef.current = userRoleNorm }, [userRoleNorm])
+    useEffect(() => { aRoleRef.current = aiRoleNorm }, [aiRoleNorm])
+
     useEffect(() => {
-        if (chatContainerRef.current) {
-            chatContainerRef.current.scrollTop =
-                chatContainerRef.current.scrollHeight
+        const id = 'lx-styles'
+        if (!document.getElementById(id)) {
+            const el = document.createElement('style'); el.id = id; el.textContent = STYLES
+            document.head.appendChild(el)
         }
+    }, [])
+
+    useEffect(() => {
+        if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight
     }, [messages])
 
-
-    // ── NEW: avatar state + mouse tracking ───────────────────────────────────
-    const [avatarId, setAvatarId] = useState<AvatarId>('lingua')
-    const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
-
     useEffect(() => {
-        const fn = (e: MouseEvent) => setMousePos({
-            x: (e.clientX / window.innerWidth) * 2 - 1,
-            y: (e.clientY / window.innerHeight) * 2 - 1,
-        })
-        window.addEventListener('mousemove', fn)
-        return () => window.removeEventListener('mousemove', fn)
-    }, [])
-    // ─────────────────────────────────────────────────────────────────────────
-
-    const STORAGE_KEY = 'selected-language-code'
-    const excludedLanguages = ['fr-FR', 'es-ES', 'ar-SA', 'es-US', 'zh-CH', 'zh-CN']
-
-    const [savedLanguage, setSavedLanguage] = useState<string | null>(null)
-    useEffect(() => {
-        const saved = localStorage.getItem(STORAGE_KEY)
-        setSavedLanguage(saved)
-    }, [])
-
-    const getLanguages = () => {
-        const codes = Array.from(new Set(browserVoices.map(v => v.lang)))
-        if (!savedLanguage || savedLanguage === 'en') {
-            return codes.filter(code => !excludedLanguages.includes(code))
-        }
-        return codes.filter(code => code.startsWith(savedLanguage))
-    }
-
-    // ── Refs ──────────────────────────────────────────────────────────────────
-    const voiceRecorderRef = useRef<VoiceRecorder>(new VoiceRecorder())
-    const textToSpeechRef = useRef<TextToSpeech>(new TextToSpeech())
-    const timerRef = useRef<NodeJS.Timeout | null>(null)
-    const playbackIntervalRef = useRef<NodeJS.Timeout | null>(null)
-    const hasInitialized = useRef(false)
-    const countdownRef = useRef<NodeJS.Timeout | null>(null)
-    const countdownTurnRef = useRef<number | null>(null)
-    const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
-
-    const currentTurnIndexRef = useRef(0)
-    const isRecordingRef = useRef(false)
-    const isListeningRef = useRef(false)
-    const isProcessingRef = useRef(false)
-    const liveTranscriptRef = useRef('')
-    const languageRef = useRef(defaultLanguage)
-    const userRoleNormRef = useRef<string | null>(null)
-    const aiRoleNormRef = useRef<string | null>(null)
-    const selectedVoiceAgentRef = useRef<VoiceAgent | null | undefined>(null)
-    const conversationEndedRef = useRef(false)
-
-    useEffect(() => { currentTurnIndexRef.current = currentTurnIndex }, [currentTurnIndex])
-    useEffect(() => { isListeningRef.current = isListening }, [isListening])
-    useEffect(() => { isProcessingRef.current = isProcessing }, [isProcessing])
-    useEffect(() => { liveTranscriptRef.current = liveTranscript }, [liveTranscript])
-    useEffect(() => { languageRef.current = language }, [language])
-    useEffect(() => { userRoleNormRef.current = userRoleNorm }, [userRoleNorm])
-    useEffect(() => { aiRoleNormRef.current = aiRoleNorm }, [aiRoleNorm])
-    useEffect(() => { conversationEndedRef.current = conversationEnded }, [conversationEnded])
-
-    // Derive role norms from conversation
-    useEffect(() => {
-        const t0 = conversation.turns[0]
-        const t1 = conversation.turns[1]
+        const t0 = conversation.turns[0], t1 = conversation.turns[1]
         if (t0 && t1 && normalizeRole(t0.role) !== normalizeRole(t1.role)) {
-            const ai = normalizeRole(t0.role)
-            const user = normalizeRole(t1.role)
-            setAiRoleNorm(ai)
-            setUserRoleNorm(user)
-            aiRoleNormRef.current = ai
-            userRoleNormRef.current = user
+            const ai = normalizeRole(t0.role), user = normalizeRole(t1.role)
+            setAiRoleNorm(ai); aRoleRef.current = ai
+            setUserRoleNorm(user); uRoleRef.current = user
         } else if (t0) {
-            const r0 = normalizeRole(t0.role)
-            if (AI_ROLE_ALIASES.includes(r0)) {
-                setAiRoleNorm(r0); aiRoleNormRef.current = r0
-                setUserRoleNorm(null); userRoleNormRef.current = null
-            } else if (USER_ROLE_ALIASES.includes(r0)) {
-                setUserRoleNorm(r0); userRoleNormRef.current = r0
-                setAiRoleNorm(null); aiRoleNormRef.current = null
-            }
+            const r = normalizeRole(t0.role)
+            if (AI_ROLE_ALIASES.includes(r)) { setAiRoleNorm(r); aRoleRef.current = r }
+            else { setUserRoleNorm(r); uRoleRef.current = r }
         }
     }, [conversation])
 
-    const currentTurn = conversation.turns[currentTurnIndex]
-    const roleNorm = normalizeRole(currentTurn?.role)
-    const isUserTurn =
-        (userRoleNorm ? roleNorm === userRoleNorm : USER_ROLE_ALIASES.includes(roleNorm)) ||
-        (!AI_ROLE_ALIASES.includes(roleNorm) && currentTurnIndex % 2 === 1)
+    const excludedLangs = ['fr-FR','es-ES','ar-SA','es-US','zh-CH','zh-CN']
+    const getLanguages = () => {
+        const codes = Array.from(new Set(browserVoices.map(v => v.lang)))
+        if (!savedLang || savedLang === 'en') return codes.filter(c => !excludedLangs.includes(c))
+        return codes.filter(c => c.startsWith(savedLang))
+    }
 
-    const uiLocale = getUILocale(language)
-    const hasVoiceForCurrentLang = hasVoiceForLang(browserVoices, language)
-    const showEnglishTranslation = language.split('-')[0].toLowerCase() !== 'en'
-
-    // Keep selectedVoice ref in sync
     useEffect(() => {
-        const v = browserVoices.find((bv) => `${bv.name}|${bv.lang}` === voiceAgentId) || null
-        selectedVoiceAgentRef.current = undefined
-        ;(selectedVoiceAgentRef as any).currentVoice = v
-    }, [voiceAgentId, browserVoices])
-
-    // Load browser voices
-    useEffect(() => {
-        loadBrowserVoices().then((voices) => {
-            setBrowserVoices(voices)
-            textToSpeechRef.current.setBrowserVoices(voices)
+        loadBrowserVoices().then(voices => {
+            setBrowserVoices(voices); ttsRef.current.setBrowserVoices(voices)
             if (!voiceAgentId && voices.length > 0) {
-                const byLang = voices.find(v => v.lang.toLowerCase().startsWith(language.toLowerCase()))
-                const first = byLang || voices[0]
-                setVoiceAgentId(`${first.name}|${first.lang}`)
+                const v = voices.find(v => v.lang.toLowerCase().startsWith(language.toLowerCase())) || voices[0]
+                setVoiceAgentId(`${v.name}|${v.lang}`)
             }
         })
     }, [])
 
-    // Keep speech recognition language in sync
-    useEffect(() => {
-        voiceRecorderRef.current.setLanguage(language)
-    }, [language])
+    useEffect(() => { vrRef.current.setLanguage(language) }, [language])
 
-    // When language changes, switch to a valid device voice for that language
     useEffect(() => {
-        if (browserVoices.length === 0) return
-        const currentVoice = browserVoices.find(v => `${v.name}|${v.lang}` === voiceAgentId)
-        const sameLang = currentVoice && currentVoice.lang.split('-')[0] === language.split('-')[0]
-        if (!sameLang) {
-            const byLang = browserVoices.find(v => v.lang.split('-')[0] === language.split('-')[0])
-            if (byLang) setVoiceAgentId(`${byLang.name}|${byLang.lang}`)
+        if (!browserVoices.length) return
+        const cur = browserVoices.find(v => `${v.name}|${v.lang}` === voiceAgentId)
+        if (!cur || cur.lang.split('-')[0] !== language.split('-')[0]) {
+            const nv = browserVoices.find(v => v.lang.split('-')[0] === language.split('-')[0])
+            if (nv) setVoiceAgentId(`${nv.name}|${nv.lang}`)
         }
-    }, [language, browserVoices, voiceAgentId])
+    }, [language, browserVoices])
 
-    // Elapsed timer
     useEffect(() => {
-        timerRef.current = setInterval(() => setElapsedTime((prev) => prev + 1), 1000)
+        voiceRef.current = browserVoices.find(v => `${v.name}|${v.lang}` === voiceAgentId) || null
+    }, [voiceAgentId, browserVoices])
+
+    useEffect(() => {
+        timerRef.current = setInterval(() => setElapsedTime(p => p+1), 1000)
         return () => { if (timerRef.current) clearInterval(timerRef.current) }
     }, [])
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    const isUserTurnByIndex = (idx: number): boolean => {
-        const turn = conversation.turns[idx]
-        if (!turn) return false
-        const norm = normalizeRole(turn.role)
-        const uRole = userRoleNormRef.current
-        return (uRole ? norm === uRole : USER_ROLE_ALIASES.includes(norm)) ||
-            (!AI_ROLE_ALIASES.includes(norm) && idx % 2 === 1)
+    /* ── Derived ─────────────────────────────────────────────────────────────── */
+    const isUserTurnByIdx = (idx: number) => {
+        const turn = conversation.turns[idx]; if (!turn) return false
+        const n = normalizeRole(turn.role), u = uRoleRef.current
+        return (u ? n===u : USER_ROLE_ALIASES.includes(n)) || (!AI_ROLE_ALIASES.includes(n) && idx%2===1)
     }
 
-    const cancelCountdown = () => {
-        if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
-        setCountdownActive(false)
-        setCountdownLeft(0)
-    }
+    const currentTurn  = conversation.turns[currentTurnIdx]
+    const showEN       = language.split('-')[0].toLowerCase() !== 'en'
+    const recDuration  = conversation?.recordingTime ?? 10
+    const timerPct     = recTimeLeft != null ? (recTimeLeft / recDuration) * 100 : 0
+    const timerUrgent  = recTimeLeft != null && recTimeLeft <= 3
+    const isUserTurn   = isUserTurnByIdx(currentTurnIdx)
+    const lastAiMsg    = [...messages].reverse().find(m => m.speaker === 'ai')
+    const progressPct  = ((currentTurnIdx + 1) / conversation.turns.length) * 100
 
-    // ── Core functions ────────────────────────────────────────────────────────
+    const showStart    = isUserTurn && !isRecording && !isListening && !isProcessing && !countdownActive
+    const showStop     = isRecording
+    const showCd       = countdownActive && !isRecording && !isListening && !isProcessing
+    const showProc     = isProcessing
+    const showSpeaking = isListening
+
+    const pillClass = isRecording ? 'rec' : isListening ? 'speak' : isProcessing ? 'proc' : countdownActive ? 'count' : 'idle'
+    const pillLabel = isRecording ? 'Recording'
+        : isListening ? 'Speaking'
+            : isProcessing ? 'Processing'
+                : countdownActive ? `Starting in ${countdownLeft}s`
+                    : isUserTurn ? 'Your turn'
+                        : 'Ready'
+
+    /* ── Core logic ──────────────────────────────────────────────────────────── */
+    const cancelCd = () => {
+        if (cdRef.current) { clearInterval(cdRef.current); cdRef.current = null }
+        setCountdownActive(false); setCountdownLeft(0)
+    }
 
     const startRecording = async () => {
-        if (isRecordingRef.current) return
-
+        if (isRecRef.current) return
         try {
-            cancelCountdown()
-            isRecordingRef.current = true
-            setIsRecording(true)
-            isProcessingRef.current = false
-            setIsProcessing(false)
-            setLiveTranscript('')
-            liveTranscriptRef.current = ''
-
-            if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null }
-
-            voiceRecorderRef.current.onTranscriptUpdate = (transcript) => {
-                setLiveTranscript(transcript)
-                liveTranscriptRef.current = transcript
-            }
-
-            voiceRecorderRef.current.setLanguage(languageRef.current)
-            await voiceRecorderRef.current.startRecording()
-
-            const recordingDuration = conversation?.recordingTime ?? 10
-            let timeLeft = recordingDuration
-            setRecordingTimeLeft(timeLeft)
-
-            recordingTimerRef.current = setInterval(() => {
-                timeLeft -= 1
-                setRecordingTimeLeft(timeLeft)
-                if (timeLeft <= 0) {
-                    if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null }
-                    setRecordingTimeLeft(null)
-                    if (isRecordingRef.current) stopRecording()
+            cancelCd(); isRecRef.current = true
+            setIsRecording(true); isProcRef.current = false; setIsProcessing(false)
+            setLiveTranscript(''); transcriptRef.current = ''
+            if (recTRef.current) { clearInterval(recTRef.current); recTRef.current = null }
+            vrRef.current.onTranscriptUpdate = (tx) => { setLiveTranscript(tx); transcriptRef.current = tx }
+            vrRef.current.setLanguage(langRef.current)
+            await vrRef.current.startRecording()
+            let left = recDuration; setRecTimeLeft(left)
+            recTRef.current = setInterval(() => {
+                left -= 1; setRecTimeLeft(left)
+                if (left <= 0) {
+                    if (recTRef.current) { clearInterval(recTRef.current); recTRef.current = null }
+                    setRecTimeLeft(null); if (isRecRef.current) stopRecording()
                 }
             }, 1000)
-
-        } catch (error) {
-            isRecordingRef.current = false
-            setIsRecording(false)
-            setRecordingTimeLeft(null)
-            alert('Microphone access denied. Please allow microphone permissions and try again.')
+        } catch {
+            isRecRef.current = false; setIsRecording(false); setRecTimeLeft(null)
+            alert('Microphone access denied.')
         }
     }
 
     const stopRecording = async () => {
-        if (!isRecordingRef.current) return
-        isRecordingRef.current = false
-
-        if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null }
-        setRecordingTimeLeft(null)
-
-        const turnIndex = currentTurnIndexRef.current
-        const turn = conversation.turns[turnIndex]
-        const transcript = liveTranscriptRef.current
-        const lang = languageRef.current
-
+        if (!isRecRef.current) return
+        isRecRef.current = false
+        if (recTRef.current) { clearInterval(recTRef.current); recTRef.current = null }
+        setRecTimeLeft(null)
+        const turnIdx = idxRef.current
+        const turn = conversation.turns[turnIdx]
+        const transcript = transcriptRef.current
+        const lang = langRef.current
         try {
-            isProcessingRef.current = true
-            setIsProcessing(true)
-
-            const audioBlob = await voiceRecorderRef.current.stopRecording()
+            isProcRef.current = true; setIsProcessing(true)
+            const audioBlob = await vrRef.current.stopRecording()
             setIsRecording(false)
-
             const userText = transcript.trim() || turn.text
             const audioUrl = VoiceRecorder.createAudioUrl(audioBlob)
-
-            const userMessage: ConversationMessage = {
-                id: `msg-${Date.now()}`,
-                role: turn.role,
-                content: userText,
-                speaker: 'user',
-                audioUrl,
-                timestamp: new Date().toISOString(),
-                turnOrder: turnIndex,
+            const userMsg: ConversationMessage = {
+                id:`msg-${Date.now()}`, role:turn.role, content:userText,
+                speaker:'user', audioUrl, timestamp:new Date().toISOString(), turnOrder:turnIdx,
             }
-
-            setMessages((prev) => [...prev, userMessage])
-
-            if (turnIndex >= conversation.turns.length - 1) {
-                setTimeout(() => endConversation(), 1000)
-                return
-            }
-
-            const nextTurnIdx = turnIndex + 1
-            const nextTurn = conversation.turns[nextTurnIdx]
-
-            setCurrentTurnIndex(nextTurnIdx)
-            currentTurnIndexRef.current = nextTurnIdx
-
-            setTimeout(() => {
-                isProcessingRef.current = false
-                setIsProcessing(false)
-                playAIMessage(getTurnText(nextTurn, lang), nextTurn.role, nextTurnIdx)
-            }, 1000)
-
-        } catch (error) {
-            isProcessingRef.current = false
-            setIsProcessing(false)
-            isRecordingRef.current = false
-            setIsRecording(false)
-            console.error('Error processing audio:', error)
+            setMessages(prev => [...prev, userMsg])
+            if (turnIdx >= conversation.turns.length-1) { setTimeout(() => endConv(), 800); return }
+            const nextIdx = turnIdx+1
+            const nextTurn = conversation.turns[nextIdx]
+            setCurrentTurnIdx(nextIdx); idxRef.current = nextIdx
+            setTimeout(() => { isProcRef.current = false; setIsProcessing(false); playAI(getTurnText(nextTurn, lang), nextTurn.role, nextIdx) }, 900)
+        } catch (e) {
+            isProcRef.current = false; setIsProcessing(false)
+            isRecRef.current = false; setIsRecording(false); console.error(e)
         }
     }
 
-    const startCountdown = (turnIndex: number) => {
-        countdownTurnRef.current = turnIndex
-        setCountdownLeft(recordDelaySeconds)
-        setCountdownActive(true)
-        if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
-
-        countdownRef.current = setInterval(() => {
-            if (
-                countdownTurnRef.current !== currentTurnIndexRef.current ||
-                isListeningRef.current ||
-                conversationEndedRef.current
-            ) {
-                cancelCountdown()
-                return
-            }
-            setCountdownLeft((prev) => {
-                const next = prev - 1
+    const startCd = (turnIdx: number) => {
+        cdTurnRef.current = turnIdx; setCountdownLeft(recordDelaySeconds); setCountdownActive(true)
+        if (cdRef.current) { clearInterval(cdRef.current); cdRef.current = null }
+        cdRef.current = setInterval(() => {
+            if (cdTurnRef.current !== idxRef.current || isListRef.current || endedRef.current) { cancelCd(); return }
+            setCountdownLeft(prev => {
+                const next = prev-1
                 if (next <= 0) {
-                    if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null }
+                    if (cdRef.current) { clearInterval(cdRef.current); cdRef.current = null }
                     setCountdownActive(false)
-                    if (!isRecordingRef.current && !isListeningRef.current && !isProcessingRef.current) {
-                        startRecording()
-                    }
+                    if (!isRecRef.current && !isListRef.current && !isProcRef.current) startRecording()
                     return 0
                 }
                 return next
@@ -761,487 +819,463 @@ export default function AudioLessonInterface({
         }, 1000)
     }
 
-    const playAIMessage = (message: string, role: string, turnOrderIndex: number) => {
-        cancelCountdown()
-        isListeningRef.current = true
-        setIsListening(true)
-
-        const aiMessage: ConversationMessage = {
-            id: `msg-${Date.now()}`,
-            role,
-            content: message,
-            speaker: 'ai',
-            timestamp: new Date().toISOString(),
-            turnOrder: turnOrderIndex,
-        }
-
-        setMessages((prev) => [...prev, aiMessage])
-
-        textToSpeechRef.current.speak(message, {
-            lang: languageRef.current,
-            voice: (selectedVoiceAgentRef as any).currentVoice ?? undefined,
+    const playAI = (message: string, role: string, turnOrder: number) => {
+        cancelCd(); isListRef.current = true; setIsListening(true)
+        setMessages(prev => [...prev, {
+            id:`msg-${Date.now()}`, role, content:message,
+            speaker:'ai', timestamp:new Date().toISOString(), turnOrder,
+        }])
+        ttsRef.current.speak(message, {
+            lang:langRef.current, voice:voiceRef.current??undefined,
             onEnd: () => {
-                isListeningRef.current = false
-                setIsListening(false)
-
-                const nextIdx = turnOrderIndex + 1
+                isListRef.current = false; setIsListening(false)
+                const nextIdx = turnOrder+1
                 const nextTurn = conversation.turns[nextIdx]
-
-                setCurrentTurnIndex(nextIdx)
-                currentTurnIndexRef.current = nextIdx
-
-                if (nextTurn && isUserTurnByIndex(nextIdx)) {
-                    setTimeout(() => startCountdown(nextIdx), 0)
-                } else if (nextTurn) {
-                    setTimeout(() => {
-                        playAIMessage(getTurnText(nextTurn, languageRef.current), nextTurn.role, nextIdx)
-                    }, 500)
-                }
+                setCurrentTurnIdx(nextIdx); idxRef.current = nextIdx
+                if (nextTurn && isUserTurnByIdx(nextIdx)) setTimeout(() => startCd(nextIdx), 0)
+                else if (nextTurn) setTimeout(() => playAI(getTurnText(nextTurn, langRef.current), nextTurn.role, nextIdx), 450)
+                else endConv()
             },
         })
     }
 
-    // Play initial AI message (only once)
     useEffect(() => {
-        if (hasInitialized.current) return
-        hasInitialized.current = true
-
+        if (initialized.current) return; initialized.current = true
         setTimeout(() => {
-            const firstTurn = conversation.turns[0]
-            if (!firstTurn) return
-            const t0 = conversation.turns[0]
-            const t1 = conversation.turns[1]
-            let detectedAiRole: string | null = null
-            if (t0 && t1 && normalizeRole(t0.role) !== normalizeRole(t1.role)) {
-                detectedAiRole = normalizeRole(t0.role)
-            }
-            const firstNorm = normalizeRole(firstTurn.role)
-            const firstIsAI = detectedAiRole
-                ? firstNorm === detectedAiRole
-                : AI_ROLE_ALIASES.includes(firstNorm)
-            if (firstIsAI) {
-                playAIMessage(getTurnText(firstTurn, languageRef.current), firstTurn.role, 0)
-            }
+            const first = conversation.turns[0]; if (!first) return
+            const t0 = conversation.turns[0], t1 = conversation.turns[1]
+            let detAI: string|null = null
+            if (t0 && t1 && normalizeRole(t0.role) !== normalizeRole(t1.role)) detAI = normalizeRole(t0.role)
+            const n = normalizeRole(first.role)
+            const isAI = detAI ? n===detAI : AI_ROLE_ALIASES.includes(n)
+            if (isAI) playAI(getTurnText(first, langRef.current), first.role, 0)
         }, 500)
     }, [])
 
-    const formatTime = (seconds: number) => {
-        const mins = Math.floor(seconds / 60)
-        const secs = seconds % 60
-        return `${mins}:${secs.toString().padStart(2, '0')}`
+    const endConv = () => {
+        ttsRef.current.stop(); endedRef.current = true; setConversationEnd(true)
+        isListRef.current = false; setIsListening(false)
+        isProcRef.current = false; setIsProcessing(false)
     }
 
-    const playSequentialAudio = async () => {
-        setIsPlayingCombined(true)
-        setPlaybackProgress(0)
-        const numTurns = conversation.turns.length
-        const t0 = conversation.turns[0]
-        const t1 = conversation.turns[1]
-        let uRole: string | null = null
+    const playAll = async () => {
+        setIsPlayingAll(true); setPlayPct(0)
+        const n = conversation.turns.length
+        const t0 = conversation.turns[0], t1 = conversation.turns[1]
+        let uRole: string|null = null
         if (t0 && t1 && normalizeRole(t0.role) !== normalizeRole(t1.role)) uRole = normalizeRole(t1.role)
-
-        for (let turnIdx = 0; turnIdx < numTurns; turnIdx++) {
-            const turn = conversation.turns[turnIdx]
-            setPlaybackProgress(((turnIdx + 1) / numTurns) * 100)
+        for (let i = 0; i < n; i++) {
+            const turn = conversation.turns[i]; setPlayPct(((i+1)/n)*100)
             const rn = normalizeRole(turn.role)
-            const isUser = uRole ? rn === uRole : USER_ROLE_ALIASES.includes(rn) || (!AI_ROLE_ALIASES.includes(rn) && turnIdx % 2 === 1)
-
+            const isUser = uRole ? rn===uRole : USER_ROLE_ALIASES.includes(rn)||(!AI_ROLE_ALIASES.includes(rn)&&i%2===1)
             if (isUser) {
-                const userMsg = messages.find((m) => m.speaker === 'user' && m.turnOrder === turnIdx)
-                if (userMsg?.audioUrl) {
-                    await new Promise<void>((resolve) => {
-                        const audio = new Audio(userMsg.audioUrl)
-                        audio.onended = () => resolve()
-                        audio.onerror = () => resolve()
-                        audio.play()
-                    })
-                }
+                const m = messages.find(m => m.speaker==='user'&&m.turnOrder===i)
+                if (m?.audioUrl) await new Promise<void>(res => { const a=new Audio(m.audioUrl!); a.onended=()=>res(); a.onerror=()=>res(); a.play() })
             } else {
-                await new Promise<void>((resolve) => {
-                    textToSpeechRef.current.speak(getTurnText(turn, language), {
-                        lang: language,
-                        voice: (selectedVoiceAgentRef as any).currentVoice ?? undefined,
-                        onEnd: () => resolve(),
-                    })
-                })
+                await new Promise<void>(res => ttsRef.current.speak(getTurnText(turn,language),{ lang:language,voice:voiceRef.current??undefined,onEnd:()=>res() }))
             }
-            await new Promise((resolve) => setTimeout(resolve, 500))
+            await new Promise(res => setTimeout(res, 400))
         }
-        setIsPlayingCombined(false)
-        setPlaybackProgress(100)
+        setIsPlayingAll(false); setPlayPct(100)
     }
 
-    const stopCombinedAudio = () => {
-        textToSpeechRef.current.stop()
-        setIsPlayingCombined(false)
-        setPlaybackProgress(0)
-        if (playbackIntervalRef.current) clearInterval(playbackIntervalRef.current)
-    }
-
-    const endConversation = () => {
-        textToSpeechRef.current.stop()
-        conversationEndedRef.current = true
-        setConversationEnded(true)
-        isProcessingRef.current = false
-        setIsProcessing(false)
-    }
-
-    function cleanVoiceName(name: string) {
-        return name
-            .replace(/Microsoft\s*/gi, "")
-            .replace(/Google\s*/gi, "")
-            .replace(/Apple\s*/gi, "")
-            .replace(/Online\s*\(Natural\)\s*/gi, "")
-            .replace(/\(.*?\)/g, "")
-            .trim()
-    }
-
-    // ── Render ────────────────────────────────────────────────────────────────
-
-    if (conversationEnded) {
-        return (
-            <div className="w-full max-w-4xl mx-auto">
-                <div className="bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg p-8 text-center mb-6">
-                    <h2 className="text-3xl font-bold mb-4">{t(uiLocale, 'conversationComplete')} 🎉</h2>
-                    <div className="flex justify-center gap-8">
-                        <div>
-                            <p className="text-4xl font-bold">{messages.filter(m => m.speaker === 'user').length}</p>
-                            <p className="text-green-100">{t(uiLocale, 'yourResponses')}</p>
-                        </div>
-                        <div>
-                            <p className="text-4xl font-bold">{formatTime(elapsedTime)}</p>
-                            <p className="text-green-100">{t(uiLocale, 'totalTime')}</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="bg-white dark:bg-slate-900 border-2 border-[#137fec]/30 dark:border-[#137fec]/50 rounded-lg p-6 mb-6">
-                    <div className="flex items-center gap-3 mb-4">
-                        <div className="bg-[#137fec]/10 dark:bg-[#137fec]/20 p-3 rounded-lg">
-                            <svg className="w-6 h-6 text-[#137fec]" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
-                            </svg>
-                        </div>
-                        <div>
-                            <h3 className="text-xl font-bold text-[#0d141b] dark:text-white">
-                                {t(uiLocale, 'completeConversationAudio')}
-                            </h3>
-                            <p className="text-sm text-[#4c739a] dark:text-slate-400">
-                                {messages.length} {t(uiLocale, 'totalExchanges')} • {conversation.scenario}
-                            </p>
-                        </div>
-                    </div>
-
-                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-800 rounded-lg p-6 mb-4 border border-blue-200 dark:border-slate-700">
-                        <p className="text-sm text-[#4c739a] dark:text-slate-400 mb-4">
-                            🎧 {t(uiLocale, 'listenComplete')}
-                        </p>
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-4">
-                                <button
-                                    onClick={isPlayingCombined ? stopCombinedAudio : playSequentialAudio}
-                                    disabled={messages.length === 0}
-                                    className="bg-[#137fec] hover:bg-[#137fec]/90 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-8 rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-[#137fec]/20"
-                                >
-                                    {isPlayingCombined ? (
-                                        <><svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" /></svg>{t(uiLocale, 'stopPlayback')}</>
-                                    ) : (
-                                        <><svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>{t(uiLocale, 'playCompleteConversation')}</>
-                                    )}
-                                </button>
-                                <div className="flex-1">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <p className="text-xs font-semibold text-[#0d141b] dark:text-white">
-                                            {isPlayingCombined ? t(uiLocale, 'playing') : t(uiLocale, 'readyToPlay')}
-                                        </p>
-                                        <p className="text-xs font-bold text-[#137fec]">{Math.round(playbackProgress)}%</p>
-                                    </div>
-                                    <div className="bg-white dark:bg-slate-700 rounded-full h-3 overflow-hidden shadow-inner">
-                                        <div
-                                            className="bg-gradient-to-r from-[#137fec] to-blue-500 h-full rounded-full transition-all duration-300 ease-out"
-                                            style={{ width: `${playbackProgress}%` }}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                            {isPlayingCombined && (
-                                <div className="flex items-center gap-2 text-sm text-[#137fec] animate-pulse">
-                                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z" /></svg>
-                                    <span className="font-medium">{t(uiLocale, 'playingCombined')}</span>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="space-y-3">
-                        <h4 className="font-semibold text-[#0d141b] dark:text-white">{t(uiLocale, 'completeTranscript')}</h4>
-                        {messages.map((msg) => (
-                            <div
-                                key={msg.id}
-                                className={`p-4 rounded-lg ${msg.speaker === 'user'
-                                    ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
-                                    : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
-                                }`}
-                            >
-                                <p className="text-xs font-bold text-[#137fec] mb-1">{msg.role}:</p>
-                                <p className="text-sm text-[#0d141b] dark:text-white mb-2">
-                                    {msg.speaker === 'ai'
-                                        ? getTurnText(conversation.turns[msg.turnOrder], language) || msg.content
-                                        : msg.content}
-                                </p>
-                                {msg.speaker === 'ai' && (() => {
-                                    const rom = getRomanization(conversation.turns[msg.turnOrder], language)
-                                    return rom ? <p className="text-xs text-slate-500 dark:text-slate-400 italic mb-2">{rom}</p> : null
-                                })()}
-                                {msg.speaker === 'ai' && showEnglishTranslation && (() => {
-                                    const en = conversation.turns[msg.turnOrder]?.text ?? ''
-                                    return en ? <p className="text-xs text-slate-600 dark:text-slate-300 mb-2">{t(uiLocale, 'inEnglish')} {en}</p> : null
-                                })()}
-                                {msg.audioUrl && <audio controls className="w-full h-8 mt-2" src={msg.audioUrl} />}
-                            </div>
+    /* ── Settings ────────────────────────────────────────────────────────────── */
+    const renderSettings = () => (
+        <>
+            <div className="lx-field">
+                <span className="lx-field-label">Language / Accent</span>
+                <Select value={language} onValueChange={setLanguage}>
+                    <SelectTrigger><SelectValue placeholder="Select language"/></SelectTrigger>
+                    <SelectContent>
+                        {getLanguages().map(c => <SelectItem key={c} value={c}>{LANGUAGE_LABELS[c]||c}</SelectItem>)}
+                    </SelectContent>
+                </Select>
+            </div>
+            <div className="lx-field">
+                <span className="lx-field-label">Voice</span>
+                <Select value={voiceAgentId} onValueChange={setVoiceAgentId}>
+                    <SelectTrigger><SelectValue placeholder="Select voice"/></SelectTrigger>
+                    <SelectContent>
+                        {browserVoices.filter(v=>v.lang.split('-')[0]===language.split('-')[0]).map(v=>(
+                            <SelectItem key={`${v.name}|${v.lang}`} value={`${v.name}|${v.lang}`}>{cleanVoiceName(v.name)}</SelectItem>
                         ))}
+                    </SelectContent>
+                </Select>
+            </div>
+        </>
+    )
+
+    /* ── Wave bars ───────────────────────────────────────────────────────────── */
+    const waveH = [16, 28, 40, 22, 48, 20, 36, 14, 32, 22]
+    const renderWave = (scale = 1) => (
+        <div className="lx-wave">
+            {waveH.map((h, i) => (
+                <div key={i} className="lx-wave-bar" style={{
+                    height: `${h * scale}px`,
+                    '--dur':   `${0.3 + i * 0.07}s`,
+                    '--delay': `${i * 0.045}s`,
+                } as React.CSSProperties}/>
+            ))}
+        </div>
+    )
+
+    /* ── COMPLETION ──────────────────────────────────────────────────────────── */
+    if (conversationEnd) {
+        const userMsgCount = messages.filter(m => m.speaker==='user').length
+
+        const heroBanner = (
+            <div className="lx-done-hero">
+                <div className="lx-done-check">✓</div>
+                <p className="lx-done-title">Lesson Complete</p>
+                <p className="lx-done-sub">{conversation.scenario}</p>
+                <div className="lx-done-stats">
+                    <div className="lx-done-stat">
+                        <p className="lx-done-num">{userMsgCount}</p>
+                        <p className="lx-done-nm">Responses</p>
+                    </div>
+                    <div className="lx-done-stat">
+                        <p className="lx-done-num">{formatTime(elapsedTime)}</p>
+                        <p className="lx-done-nm">Duration</p>
                     </div>
                 </div>
+            </div>
+        )
 
-                <div className="flex justify-center mt-6">
-                    <button
-                        onClick={() => onComplete(messages)}
-                        className="bg-slate-600 hover:bg-slate-700 text-white font-bold py-3 px-8 rounded-lg transition-all flex items-center gap-2"
-                    >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                        </svg>
-                        {t(uiLocale, 'backToCourse')}
-                    </button>
+        const replayRow = (
+            <div style={{display:'flex',alignItems:'center',gap:12}}>
+                <button className={`lx-replay-btn${isPlayingAll?' stop-v':''}`}
+                        onClick={isPlayingAll ? ()=>{ttsRef.current.stop();setIsPlayingAll(false)} : playAll}
+                >
+                    {isPlayingAll ? <><StopCircle size={14}/> Stop</> : <><Play size={14}/> Replay</>}
+                </button>
+                <div className="lx-prog-track">
+                    <div className="lx-prog-bar"><div className="lx-prog-fill" style={{width:`${playPct}%`}}/></div>
+                    <div className="lx-prog-label">{Math.round(playPct)}% played</div>
+                </div>
+            </div>
+        )
+
+        const transcriptList = (
+            <div className="lx-txlist">
+                <div className="lx-txlist-title">Full Transcript</div>
+                {messages.map(msg => (
+                    <div key={msg.id} className={`lx-bw ${msg.speaker}`}>
+                        <div className="lx-brole">{msg.role}</div>
+                        <div className={`lx-bubble ${msg.speaker}`}>
+                            {msg.speaker==='ai' ? getTurnText(conversation.turns[msg.turnOrder], language)||msg.content : msg.content}
+                            {msg.speaker==='ai' && getRomanization(conversation.turns[msg.turnOrder], language) &&
+                            <div className="lx-brom">{getRomanization(conversation.turns[msg.turnOrder], language)}</div>}
+                            {msg.speaker==='ai' && showEN && conversation.turns[msg.turnOrder]?.text &&
+                            <div className="lx-ben">EN: {conversation.turns[msg.turnOrder].text}</div>}
+                        </div>
+                        {msg.audioUrl && <audio controls style={{width:'100%',height:28,marginTop:4}} src={msg.audioUrl}/>}
+                    </div>
+                ))}
+            </div>
+        )
+
+        return (
+            <div className="lx">
+                {/* Mobile */}
+                <div className="lx-mobile" style={{display:'flex',flexDirection:'column'}}>
+                    <div className="lx-progress"><div className="lx-progress-fill" style={{width:'100%'}}/></div>
+                    <div style={{flex:'1 1 0',minHeight:0,overflowY:'auto',padding:'20px 15px',display:'flex',flexDirection:'column',gap:12,background:'var(--bg)'}}>
+                        {heroBanner}{replayRow}
+                        <button className="lx-back-btn" onClick={()=>onComplete(messages)}>← Back to Course</button>
+                    </div>
+                </div>
+                {/* Desktop */}
+                <div className="lx-desktop" style={{flexDirection:'column',gap:20,display:'flex'}}>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
+                        {heroBanner}
+                        <div className="lx-panel" style={{display:'flex',flexDirection:'column',gap:14}}>
+                            <div>
+                                <div style={{fontSize:15,fontWeight:700,marginBottom:4,color:'var(--text)'}}>Replay Session</div>
+                                <div style={{fontSize:12,color:'var(--text-3)'}}>Listen back through the conversation</div>
+                            </div>
+                            {replayRow}
+                            <button className="lx-back-btn" onClick={()=>onComplete(messages)}>← Back to Course</button>
+                        </div>
+                    </div>
+                    {transcriptList}
                 </div>
             </div>
         )
     }
 
+    /* ── LESSON SCREEN ───────────────────────────────────────────────────────── */
     return (
-        <div className="w-full max-w-4xl mx-auto">
-            {/* ── Mascot with avatar switcher ── */}
-            <MascotBlock
-                isSpeaking={isListening}
-                avatarId={avatarId}
-                onAvatarChange={setAvatarId}
-                mousePos={mousePos}
-            />
+        <div className="lx">
 
-            {/* Language & Voice */}
-            <div className="flex flex-wrap items-end gap-4 mb-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700">
-                <div className="flex flex-col gap-1.5 min-w-[180px]">
-                    <Label className="text-xs font-semibold text-[#4c739a] dark:text-slate-400">
-                        {t(uiLocale, 'Accent')}
-                    </Label>
-                    <Select value={language} onValueChange={setLanguage}>
-                        <SelectTrigger className="w-full">
-                            <SelectValue placeholder={t(uiLocale, 'selectLanguage')} />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {getLanguages().map((code) => (
-                                <SelectItem key={code} value={code}>
-                                    {LANGUAGE_LABELS[code] || code}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+            {/* ══ MOBILE ══════════════════════════════════════════════════════════ */}
+            <div className="lx-mobile">
+
+                <div className="lx-progress">
+                    <div className="lx-progress-fill" style={{width:`${progressPct}%`}}/>
                 </div>
-                <div className="flex flex-col gap-1.5 min-w-[200px]">
-                    <Label className="text-xs font-semibold text-[#4c739a] dark:text-slate-400">
-                        {t(uiLocale, 'Agent')}
-                    </Label>
-                    <Select value={voiceAgentId} onValueChange={setVoiceAgentId}>
-                        <SelectTrigger className="w-full">
-                            <SelectValue placeholder={t(uiLocale, 'selectVoice')} />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {(browserVoices.length > 0
-                                    ? browserVoices.filter(v => v.lang.split('-')[0] === language.split('-')[0])
-                                    : []
-                            ).map((v) => (
-                                <SelectItem key={`${v.name}|${v.lang}`} value={`${v.name}|${v.lang}`}>
-                                    {cleanVoiceName(v.name)}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
-            </div>
 
-            {browserVoices.length > 0 && !hasVoiceForCurrentLang && (
-                <div className="mb-4 p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800" role="alert">
-                    <p className="text-sm text-amber-800 dark:text-amber-200">
-                        {t(uiLocale, 'noVoiceForLanguage')}
-                    </p>
-                </div>
-            )}
-
-            {/* Header */}
-            <div className="flex justify-between items-center mb-6">
-                <div>
-                    <h2 className="text-2xl font-bold text-[#0d141b] dark:text-white">{conversation.scenario}</h2>
-                    <p className="text-[#4c739a] dark:text-slate-400">
-                        {t(uiLocale, 'turnOf')} {currentTurnIndex + 1} {t(uiLocale, 'of')} {conversation.turns.length}
-                    </p>
-                </div>
-                <div className="text-right">
-                    <p className="text-3xl font-bold text-[#137fec]">{formatTime(elapsedTime)}</p>
-                    <p className="text-xs text-[#4c739a] dark:text-slate-400">{t(uiLocale, 'elapsedTime')}</p>
-                </div>
-            </div>
-
-            {/* Progress Bar */}
-            <div className="mb-6">
-                <div className="bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
-                    <div
-                        className="bg-[#137fec] h-full transition-all duration-300"
-                        style={{ width: `${((currentTurnIndex + 1) / conversation.turns.length) * 100}%` }}
-                    />
-                </div>
-            </div>
-
-            {/* Conversation Transcript */}
-            <div
-                ref={chatContainerRef}
-                className="bg-white dark:bg-slate-900 border border-[#e7edf3] dark:border-slate-800 rounded-lg p-6 mb-6 max-h-96 overflow-y-auto"
-            >
-                <div className="space-y-4">
-                    {messages.map((msg) => (
-                        <div key={msg.id} className={`flex ${msg.speaker === 'user' ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-2xl p-4 rounded-lg ${msg.speaker === 'user'
-                                ? 'bg-[#137fec] text-white'
-                                : 'bg-slate-100 dark:bg-slate-800 text-[#0d141b] dark:text-white'}`}
-                            >
-                                <p className="text-xs font-bold mb-2 opacity-80">{msg.role}</p>
-                                <p className="text-sm">
-                                    {msg.speaker === 'ai'
-                                        ? getTurnText(conversation.turns[msg.turnOrder], language) || msg.content
-                                        : msg.content}
-                                </p>
-                                {msg.speaker === 'ai' && (() => {
-                                    const rom = getRomanization(conversation.turns[msg.turnOrder], language)
-                                    return rom ? <p className="text-xs opacity-80 mt-1 italic">{rom}</p> : null
-                                })()}
-                                {msg.speaker === 'ai' && showEnglishTranslation && (() => {
-                                    const en = conversation.turns[msg.turnOrder]?.text ?? ''
-                                    return en ? <p className="text-xs opacity-80 mt-1">{t(uiLocale, 'inEnglish')} {en}</p> : null
-                                })()}
-                                {msg.audioUrl && <audio controls className="w-full h-6 mt-2" src={msg.audioUrl} />}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* Voice Input Controls */}
-            <div className="bg-gradient-to-r from-[#137fec]/10 to-blue-500/10 dark:from-[#137fec]/20 dark:to-blue-500/20 border border-[#137fec]/30 dark:border-[#137fec]/50 rounded-lg p-8 text-center">
-                {isListening && (
-                    <div className="mb-6">
-                        <div className="flex justify-center mb-4">
-                            <div className="flex gap-2">
-                                {[0, 1, 2, 3, 4].map((i) => (
-                                    <div key={i} className="w-1 bg-[#137fec] rounded-full animate-pulse"
-                                         style={{ height: `${20 + i * 10}px`, animation: `pulse ${0.4 + i * 0.1}s ease-in-out infinite` }} />
-                                ))}
-                            </div>
-                        </div>
-                        <p className="text-[#137fec] font-semibold">{t(uiLocale, 'listeningTo')} {currentTurn?.role}...</p>
-                    </div>
-                )}
-
-                {isRecording && (
-                    <div className="mb-6">
-                        <div className="flex justify-center mb-4">
-                            <div className="w-16 h-16 rounded-full border-4 border-[#137fec] border-t-red-500 animate-spin" />
-                        </div>
-                        <p className="text-[#0d141b] dark:text-white font-semibold mb-3">
-                            {t(uiLocale, 'recording')}
-                            {recordingTimeLeft !== null && recordingTimeLeft > 0 && (
-                                <span className="ml-2 text-[#137fec]">{recordingTimeLeft}s remaining</span>
-                            )}
-                        </p>
-                        {liveTranscript && (
-                            <div className="bg-white dark:bg-slate-800 border border-[#137fec]/30 rounded-lg p-4 mb-4 text-left">
-                                <p className="text-xs font-bold text-[#137fec] mb-2">{t(uiLocale, 'liveTranscription')}</p>
-                                <p className="text-sm text-[#0d141b] dark:text-white italic">{liveTranscript}</p>
-                            </div>
-                        )}
-                        <p className="text-[#4c739a] dark:text-slate-400 text-sm">
-                            {t(uiLocale, 'say')}: "{getTurnText(currentTurn, language)}"
-                        </p>
-                        {getRomanization(currentTurn, language) && (
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 italic">
-                                {getRomanization(currentTurn, language)}
-                            </p>
-                        )}
-                        {showEnglishTranslation && currentTurn?.text && (
-                            <p className="text-xs text-slate-600 dark:text-slate-300 mt-2">
-                                {t(uiLocale, 'inEnglish')} {currentTurn.text}
-                            </p>
-                        )}
-                    </div>
-                )}
-
-                {isProcessing && (
-                    <div className="mb-6">
-                        <p className="text-[#137fec] font-semibold">{t(uiLocale, 'processing')}</p>
-                    </div>
-                )}
-
-                {!isRecording && !isListening && !isProcessing && isUserTurn && (
+                <div className="lx-nav">
                     <div>
-                        <p className="text-[#0d141b] dark:text-white font-semibold mb-2">
-                            {t(uiLocale, 'yourTurnAs')} {currentTurn?.role}
-                        </p>
-                        <p className={`text-sm text-[#4c739a] dark:text-slate-400 ${(getRomanization(currentTurn, language) || (showEnglishTranslation && currentTurn?.text)) ? 'mb-1' : 'mb-6'}`}>
-                            {t(uiLocale, 'say')}: "{getTurnText(currentTurn, language)}"
-                        </p>
-                        {getRomanization(currentTurn, language) && (
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-1 italic">
-                                {getRomanization(currentTurn, language)}
-                            </p>
-                        )}
-                        {showEnglishTranslation && currentTurn?.text && (
-                            <p className="text-xs text-slate-600 dark:text-slate-300 mb-6">
-                                {t(uiLocale, 'inEnglish')} {currentTurn.text}
-                            </p>
-                        )}
+                        <div className="lx-nav-title">{conversation.scenario}</div>
+                        <div className="lx-nav-sub">Turn {currentTurnIdx+1} / {conversation.turns.length}</div>
                     </div>
-                )}
+                    <div className="lx-nav-right">
+                        <div className="lx-timer-chip">{formatTime(elapsedTime)}</div>
+                        <button className="lx-icon-btn" onClick={()=>setSettingsOpen(true)}>
+                            <Settings size={14}/>
+                        </button>
+                    </div>
+                </div>
 
-                <div className="flex gap-4 justify-center">
-                    {isUserTurn && !isRecording && !isListening && !isProcessing ? (
-                        <button
-                            onClick={startRecording}
-                            disabled={countdownActive}
-                            className="bg-[#137fec] hover:bg-[#137fec]/90 disabled:opacity-50 text-white font-bold py-4 px-8 rounded-lg text-lg shadow-lg shadow-[#137fec]/20 transition-all flex items-center gap-3"
-                        >
-                            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M12 1C6.48 1 2 5.48 2 11v8c0 .55.45 1 1 1h2v-6h-2v-2c0-3.87 3.13-7 7-7s7 3.13 7 7v2h-2v6h2v-8c0-5.52-4.48-10-10-10z" />
-                            </svg>
-                            {t(uiLocale, 'startRecording')}
-                        </button>
-                    ) : isRecording ? (
-                        <button
-                            onClick={stopRecording}
-                            disabled={isProcessing}
-                            className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-bold py-4 px-8 rounded-lg text-lg shadow-lg transition-all flex items-center gap-3"
-                        >
-                            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M6 4h12v12H6z" />
-                            </svg>
-                            {t(uiLocale, 'stopRecording')}
-                        </button>
-                    ) : null}
-                    {!isRecording && !isListening && !isProcessing && countdownActive && (
-                        <div className="flex items-center gap-2 text-sm font-semibold text-[#137fec]">
-                            <div className="w-3 h-3 rounded-full bg-[#137fec] animate-pulse" />
-                            <span>Recording starts in {countdownLeft}…</span>
+                <div className="lx-scroll" ref={scrollRef}>
+
+                    <div className="lx-status-row">
+                        <div className={`lx-pill ${pillClass}`}>
+                            <div className="lx-dot"/>{pillLabel}
+                        </div>
+                        <span className="lx-pct">{Math.round(progressPct)}% done</span>
+                    </div>
+
+                    {/* AI Prompt */}
+                    {lastAiMsg && (
+                        <div className="lx-prompt-card">
+                            <div className="lx-prompt-label">
+                                <Volume2 size={10}/>
+                                {lastAiMsg.role.charAt(0).toUpperCase() + lastAiMsg.role.slice(1)}
+                            </div>
+                            <div className="lx-prompt-text">
+                                {getTurnText(conversation.turns[lastAiMsg.turnOrder], language)||lastAiMsg.content}
+                            </div>
+                            {getRomanization(conversation.turns[lastAiMsg.turnOrder], language) && (
+                                <div className="lx-prompt-rom">{getRomanization(conversation.turns[lastAiMsg.turnOrder], language)}</div>
+                            )}
+                            {showEN && conversation.turns[lastAiMsg.turnOrder]?.text && (
+                                <div className="lx-prompt-en">🇬🇧 {conversation.turns[lastAiMsg.turnOrder].text}</div>
+                            )}
                         </div>
                     )}
+
+                    {/* Your line */}
+                    {isUserTurn && currentTurn && !isProcessing && (
+                        <div className="lx-say-card">
+                            <div className="lx-say-label">
+                                <span className="lx-say-badge">↗</span>
+                                Your line
+                            </div>
+                            <div className="lx-say-text">"{getTurnText(currentTurn, language)}"</div>
+                            {getRomanization(currentTurn, language) && (
+                                <div className="lx-say-rom">{getRomanization(currentTurn, language)}</div>
+                            )}
+                            {showEN && currentTurn.text && (
+                                <div className="lx-say-en">🇬🇧 {currentTurn.text}</div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Timer */}
+                    {isRecording && (
+                        <div className="lx-timer-wrap">
+                            <div className="lx-timer-bar">
+                                <div className={`lx-timer-fill${timerUrgent?' urgent':''}`} style={{width:`${timerPct}%`}}/>
+                            </div>
+                            <div className="lx-timer-label">
+                                <span>Recording</span>
+                                <span>{recTimeLeft != null && recTimeLeft > 0 ? `${recTimeLeft}s left` : 'Finishing…'}</span>
+                            </div>
+                            {liveTranscript && <div className="lx-live-tx">"{liveTranscript}"</div>}
+                        </div>
+                    )}
+
+                    <div style={{height:8}}/>
+                </div>
+
+                {/* Bottom controls */}
+                <div className="lx-bottom">
+                    {showSpeaking && (
+                        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:10}}>
+                            {renderWave(1)}
+                            <span style={{fontSize:11,color:'var(--text-3)',fontWeight:500}}>AI is speaking…</span>
+                        </div>
+                    )}
+
+                    {showProc && (
+                        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:10}}>
+                            <div style={{display:'flex',gap:6,alignItems:'center',height:32}}>
+                                {[0,1,2].map(i=>(
+                                    <div key={i} style={{
+                                        width:8, height:8, borderRadius:'50%',
+                                        background:'linear-gradient(135deg,var(--blue-400),var(--blue-600))',
+                                        animation:`lxBlink .8s ease-in-out ${i*.18}s infinite`
+                                    }}/>
+                                ))}
+                            </div>
+                            <span style={{fontSize:11,color:'var(--text-3)',fontWeight:500}}>Processing…</span>
+                        </div>
+                    )}
+
+                    {!showSpeaking && !showProc && (
+                        <div className="lx-controls-row">
+                            {showCd && (
+                                <div className="lx-state-btn">
+                                    <span style={{fontSize:20,fontWeight:800,color:'#D97706'}}>{countdownLeft}</span>
+                                    <span style={{fontSize:12}}>Starting…</span>
+                                </div>
+                            )}
+                            {(showStart || showStop) && (
+                                <button
+                                    className={`lx-mic-btn ${showStart?'start':'stop'}`}
+                                    onClick={showStart ? startRecording : stopRecording}
+                                >
+                                    {showStop && <><div className="lx-ring1"/><div className="lx-ring2"/></>}
+                                    {showStart ? <Mic size={26}/> : <Square size={22} fill="white"/>}
+                                </button>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="lx-btn-hint">
+                        {showStart    ? 'Tap to record your response'
+                            : showStop  ? 'Tap to finish recording'
+                                : showCd    ? `Auto-starting in ${countdownLeft}s`
+                                    : showProc  ? 'Processing response…'
+                                        : showSpeaking ? 'AI is speaking'
+                                            : ''}
+                    </div>
                 </div>
             </div>
+
+            {/* ══ DESKTOP ══════════════════════════════════════════════════════════ */}
+            <div className="lx-desktop">
+
+                {/* Sidebar */}
+                <div className="lx-sidebar">
+                    <div className="lx-panel">
+                        <div className="lx-panel-title">Session</div>
+                        <div className="lx-session-name">{conversation.scenario}</div>
+                        <div className="lx-session-meta">
+                            Turn {currentTurnIdx+1} of {conversation.turns.length} · {Math.round(progressPct)}%
+                        </div>
+                        <div className="lx-progress" style={{borderRadius:4}}>
+                            <div className="lx-progress-fill" style={{width:`${progressPct}%`}}/>
+                        </div>
+                        <div className="lx-divider" style={{margin:'14px 0'}}/>
+                        <div className="lx-desk-timer">{formatTime(elapsedTime)}</div>
+                        <div className="lx-desk-timer-lbl">Elapsed</div>
+                    </div>
+
+                    <div className="lx-panel">
+                        <div className="lx-panel-title">Settings</div>
+                        {renderSettings()}
+                    </div>
+                </div>
+
+                {/* Main */}
+                <div style={{display:'flex',flexDirection:'column',gap:14}}>
+
+                    <div style={{display:'flex',alignItems:'center',gap:10}}>
+                        <div className={`lx-pill ${pillClass}`}><div className="lx-dot"/>{pillLabel}</div>
+                    </div>
+
+                    {/* Chat */}
+                    <div className="lx-chat" ref={chatScrollRef}>
+                        {messages.length === 0 && <div className="lx-chat-empty">Conversation will appear here…</div>}
+                        {messages.map(msg => (
+                            <div key={msg.id} className={`lx-bw ${msg.speaker}`}>
+                                <div className="lx-brole">{msg.role}</div>
+                                <div className={`lx-bubble ${msg.speaker}`}>
+                                    {msg.speaker==='ai'
+                                        ? getTurnText(conversation.turns[msg.turnOrder], language)||msg.content
+                                        : msg.content}
+                                    {msg.speaker==='ai' && getRomanization(conversation.turns[msg.turnOrder], language) && (
+                                        <div className="lx-brom">{getRomanization(conversation.turns[msg.turnOrder], language)}</div>
+                                    )}
+                                    {msg.speaker==='ai' && showEN && conversation.turns[msg.turnOrder]?.text && (
+                                        <div className="lx-ben">EN: {conversation.turns[msg.turnOrder].text}</div>
+                                    )}
+                                </div>
+                                {msg.audioUrl && <audio controls style={{width:'100%',height:28,marginTop:4}} src={msg.audioUrl}/>}
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Controls */}
+                    <div className="lx-ctrl">
+                        {lastAiMsg && (
+                            <div className="lx-prompt-card" style={{borderRadius:'var(--r-md)'}}>
+                                <div className="lx-prompt-label">
+                                    <Volume2 size={10}/>
+                                    {lastAiMsg.role.charAt(0).toUpperCase() + lastAiMsg.role.slice(1)}
+                                </div>
+                                <div className="lx-prompt-text">
+                                    {getTurnText(conversation.turns[lastAiMsg.turnOrder], language)||lastAiMsg.content}
+                                </div>
+                            </div>
+                        )}
+
+                        {(showStart || showStop || showCd) && isUserTurn && currentTurn && (
+                            <div className="lx-say-card" style={{borderRadius:'var(--r-md)'}}>
+                                <div className="lx-say-label">
+                                    <span className="lx-say-badge">↗</span> Your line
+                                </div>
+                                <div className="lx-say-text">"{getTurnText(currentTurn, language)}"</div>
+                                {getRomanization(currentTurn, language) && (
+                                    <div className="lx-say-rom">{getRomanization(currentTurn, language)}</div>
+                                )}
+                                {showEN && currentTurn.text && (
+                                    <div className="lx-say-en">🇬🇧 {currentTurn.text}</div>
+                                )}
+                            </div>
+                        )}
+
+                        {showStop && (
+                            <div className="lx-timer-wrap">
+                                <div className="lx-timer-bar">
+                                    <div className={`lx-timer-fill${timerUrgent?' urgent':''}`} style={{width:`${timerPct}%`}}/>
+                                </div>
+                                <div className="lx-timer-label">
+                                    <span>Recording</span>
+                                    <span>{recTimeLeft != null && recTimeLeft > 0 ? `${recTimeLeft}s left` : 'Finishing…'}</span>
+                                </div>
+                                {liveTranscript && <div className="lx-live-tx">"{liveTranscript}"</div>}
+                            </div>
+                        )}
+
+                        <div style={{display:'flex',alignItems:'center',gap:14}}>
+                            {showStart && (
+                                <button className="lx-desk-rec start" onClick={startRecording}>
+                                    <Mic size={15}/> Start Recording
+                                </button>
+                            )}
+                            {showStop && (
+                                <button className="lx-desk-rec stop" onClick={stopRecording}>
+                                    <Square size={14} fill="var(--red-500)"/> Stop Recording
+                                </button>
+                            )}
+                            {showSpeaking && (
+                                <div style={{display:'flex',alignItems:'center',gap:12}}>
+                                    {renderWave(0.65)}
+                                    <span className="lx-ctrl-status">AI is speaking…</span>
+                                </div>
+                            )}
+                            {showProc && <span className="lx-ctrl-status">Processing your response…</span>}
+                            {showCd   && <span className="lx-ctrl-status">Auto-starting in {countdownLeft}s…</span>}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Settings Sheet */}
+            {settingsOpen && (
+                <>
+                    <div className="lx-overlay" onClick={()=>setSettingsOpen(false)}/>
+                    <div className="lx-sheet">
+                        <div className="lx-sheet-handle"/>
+                        <div className="lx-sheet-title">Settings</div>
+                        {renderSettings()}
+                        <button className="lx-sheet-done" onClick={()=>setSettingsOpen(false)}>Done</button>
+                    </div>
+                </>
+            )}
         </div>
     )
 }

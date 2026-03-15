@@ -26,6 +26,11 @@ import { Label } from '@/components/ui/label'
 const DEFAULT_LANG = 'en-US'
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
+export function getLanguageLabel(locale: string): string {
+    const normalized = locale.replace('_', '-')
+    return LANGUAGE_LABELS[normalized] || locale
+}
+
 export default function LessonPage({
     params,
 }: {
@@ -220,7 +225,8 @@ export default function LessonPage({
                                             <SelectContent>
                                                 {getLanguages().map((code) => (
                                                     <SelectItem key={code} value={code}>
-                                                        {LANGUAGE_LABELS[code] || code}
+                                                        {/*{LANGUAGE_LABELS[getLanguageLabel(code)] || code}*/}
+                                                        {getLanguageLabel(code)}
                                                     </SelectItem>
                                                 ))}
                                             </SelectContent>
@@ -314,7 +320,7 @@ export default function LessonPage({
                         />
                     )}
                 </main>
-                <MobileNav />
+                {/*<MobileNav />*/}
             </div>
         </div>
     )
