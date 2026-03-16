@@ -77,18 +77,20 @@ export default function CourseCard({
             <span>{course.duration} min</span>
             <span>{course.rating.toFixed(1)} ★</span>
           </div>
-          <div className="flex items-center gap-3">
-            <span
-              className="bg-[#137fec] text-white font-bold py-2 px-4 rounded-lg flex-1 text-sm transition-opacity hover:opacity-90 text-center"
-            >
-              Learn More
-            </span>
-            <span className="bg-slate-100 dark:bg-slate-800 text-[#0d141b] dark:text-slate-100 p-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm-2-13h4v6h-4z" />
-              </svg>
-            </span>
-          </div>
+
+          {/*<div className="flex items-center gap-3">*/}
+          {/*  <span*/}
+          {/*    className="bg-[#137fec] text-white font-bold py-2 px-4 rounded-lg flex-1 text-sm transition-opacity hover:opacity-90 text-center"*/}
+          {/*  >*/}
+          {/*    Learn More*/}
+          {/*  </span>*/}
+          {/*  <span className="bg-slate-100 dark:bg-slate-800 text-[#0d141b] dark:text-slate-100 p-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">*/}
+          {/*    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">*/}
+          {/*      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm-2-13h4v6h-4z" />*/}
+          {/*    </svg>*/}
+          {/*  </span>*/}
+          {/*</div>*/}
+
         </div>
       </div>
 
