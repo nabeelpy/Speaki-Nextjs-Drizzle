@@ -1,9 +1,15 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, memo } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { VoiceRecorder, TextToSpeech } from '@/lib/voice-recorder'
 import type { LessonConversation, ConversationMessage, ConversationTurn } from '@/lib/types'
-import { LANGUAGE_LABELS, loadBrowserVoices } from '@/lib/voice-config'
+import {
+    LANGUAGE_LABELS,
+    loadBrowserVoices,
+    hasVoiceForLang,
+} from '@/lib/voice-config'
+import { t, getUILocale } from '@/lib/i18n/audio-lesson'
 import {
     Select,
     SelectContent,
@@ -11,8 +17,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
-import { Settings, Mic, Square, Play, StopCircle, Volume2 } from 'lucide-react'
+import { Settings, X, ChevronLeft, Mic, Square, Play, StopCircle } from 'lucide-react'
 
+// ─── Types ─────────────────────────────────────────────────────────────────────
 interface AudioLessonInterfaceProps {
     conversation: LessonConversation
     onComplete: (messages: ConversationMessage[]) => void
@@ -22,10 +29,21 @@ interface AudioLessonInterfaceProps {
     recordDelaySeconds?: number
 }
 
-const DEFAULT_LANG = 'en-US'
-const USER_ROLE_ALIASES = ['passenger','user','you','student','customer','learner','friend']
-const AI_ROLE_ALIASES   = ['officer','ai','agent','system','teacher','assistant','me']
+type AvatarId = 'lingua' | 'jelly'
 
+// ─── Constants ──────────────────────────────────────────────────────────────────
+const DEFAULT_LANG = 'en-US'
+const USER_ROLE_ALIASES = ['passenger', 'user', 'you', 'student', 'customer', 'learner', 'friend']
+const AI_ROLE_ALIASES   = ['officer', 'ai', 'agent', 'system', 'teacher', 'assistant', 'me']
+const MASCOT_COLOR = '#4F7FFA'
+const BLOB = 'M50,10 C74,9 91,26 91,50 C91,74 74,91 50,91 C26,91 9,74 9,50 C9,26 26,11 50,10Z'
+const JELLY_BORDER_RADIUS = [
+    '60% 40% 30% 70% / 60% 30% 70% 40%',
+    '30% 60% 70% 40% / 50% 60% 30% 60%',
+    '60% 40% 30% 70% / 60% 30% 70% 40%',
+]
+
+// ─── Helpers ───────────────────────────────────────────────────────────────────
 function getTurnText(turn: ConversationTurn | undefined, lang: string): string {
     if (!turn) return ''
     const byLang = turn.textByLang
@@ -38,6 +56,11 @@ function getTurnText(turn: ConversationTurn | undefined, lang: string): string {
         if (variant && byLang[variant]) return byLang[variant]
     }
     return turn.text
+}
+
+export function getLanguageLabelsimple(locale: string): string {
+    const normalized = locale.replace('_', '-')
+    return normalized
 }
 
 function getRomanization(turn: ConversationTurn | undefined, lang: string): string {
@@ -54,545 +77,571 @@ function getRomanization(turn: ConversationTurn | undefined, lang: string): stri
 }
 
 function normalizeRole(r?: string) { return (r ?? '').trim().toLowerCase() }
-function formatTime(s: number) {
-    return `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`
+
+function formatTime(seconds: number) {
+    const m = Math.floor(seconds / 60)
+    const s = seconds % 60
+    return `${m}:${s.toString().padStart(2, '0')}`
 }
-function cleanVoiceName(n: string) {
-    return n.replace(/Microsoft\s*/gi,'').replace(/Google\s*/gi,'').replace(/Apple\s*/gi,'')
-        .replace(/Online\s*\(Natural\)\s*/gi,'').replace(/\(.*?\)/g,'').trim()
+
+function cleanVoiceName(name: string) {
+    return name
+        .replace(/Microsoft\s*/gi, '').replace(/Google\s*/gi, '').replace(/Apple\s*/gi, '')
+        .replace(/Online\s*\(Natural\)\s*/gi, '').replace(/\(.*?\)/g, '').trim()
 }
 
-/* ─── CSS ──────────────────────────────────────────────────────────────────── */
-const STYLES = `
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&display=swap');
+// ─── Global styles ──────────────────────────────────────────────────────────────
+const GLOBAL_STYLES = `
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&display=swap');
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; }
 
-.lx {
-  /* ── Palette ── */
-  --blue-50:   #EFF6FF;
-  --blue-100:  #DBEAFE;
-  --blue-200:  #BFDBFE;
-  --blue-300:  #93C5FD;
-  --blue-400:  #60A5FA;
-  --blue-500:  #3B82F6;
-  --blue-600:  #2563EB;
-  --blue-700:  #1D4ED8;
-  --blue-800:  #1E40AF;
-  --blue-900:  #1E3A8A;
-
-  --slate-50:  #F8FAFC;
-  --slate-100: #F1F5F9;
-  --slate-200: #E2E8F0;
-  --slate-300: #CBD5E1;
-  --slate-400: #94A3B8;
-  --slate-500: #64748B;
-  --slate-600: #475569;
-  --slate-700: #334155;
-  --slate-800: #1E293B;
-  --slate-900: #0F172A;
-
-  --red-50:    #FEF2F2;
-  --red-400:   #F87171;
-  --red-500:   #EF4444;
-  --red-600:   #DC2626;
-
-  --green-50:  #F0FDF4;
-  --green-400: #4ADE80;
-  --green-500: #22C55E;
-  --green-600: #16A34A;
-
-  /* ── Semantic ── */
-  --bg:        var(--slate-50);
-  --bg-alt:    #FFFFFF;
-  --surface:   #FFFFFF;
-  --surface-2: var(--slate-50);
-  --surface-3: var(--blue-50);
-  --border:    var(--slate-200);
-  --border-2:  var(--slate-300);
-  --brand:     var(--blue-600);
-  --brand-lt:  var(--blue-500);
-  --brand-dk:  var(--blue-700);
-  --brand-bg:  var(--blue-50);
-  --brand-bdr: var(--blue-200);
-
-  --text:      var(--slate-900);
-  --text-2:    var(--slate-700);
-  --text-3:    var(--slate-500);
-  --text-4:    var(--slate-400);
-
-  /* ── Radii ── */
-  --r-xs: 8px;
-  --r-sm: 12px;
-  --r-md: 16px;
-  --r-lg: 20px;
-  --r-xl: 28px;
-
-  /* ── Shadows ── */
-  --shadow-xs: 0 1px 2px rgba(15,23,42,.04);
-  --shadow-sm: 0 1px 4px rgba(15,23,42,.06), 0 2px 8px rgba(15,23,42,.04);
-  --shadow-md: 0 4px 12px rgba(15,23,42,.08), 0 2px 4px rgba(15,23,42,.04);
-  --shadow-lg: 0 8px 24px rgba(15,23,42,.10), 0 2px 6px rgba(15,23,42,.05);
-  --shadow-brand: 0 4px 16px rgba(37,99,235,.30), 0 1px 3px rgba(37,99,235,.15);
-
-  font-family: 'Geist', system-ui, -apple-system, sans-serif;
+.al-root {
+  --brand:        #4F7FFA;
+  --brand-soft:   #EEF3FF;
+  --brand-border: #C7D8FF;
+  --brand-dark:   #2D5FD6;
+  --surface:      #FFFFFF;
+  --surface-alt:  #F5F7FC;
+  --border:       #E4E9F4;
+  --text:         #111827;
+  --text-sub:     #6B7FA8;
+  --text-muted:   #A8B5CC;
+  --red:          #F04438;
+  --green:        #12B76A;
+  --radius-lg:    20px;
+  --radius-md:    14px;
+  --radius-sm:    10px;
+  --shadow-sm:    0 1px 4px rgba(0,0,0,0.06);
+  --shadow-md:    0 4px 20px rgba(0,0,0,0.08);
+  --shadow-brand: 0 6px 28px rgba(79,127,250,0.35);
+  font-family: 'DM Sans', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   color: var(--text);
-  background: var(--bg);
 }
 
-/* ── Responsive ── */
+/* ── Mobile layout: full-screen fixed ── */
 @media (max-width: 767px) {
-  .lx {
-    position: fixed; inset: 0;
-    display: flex; flex-direction: column;
+  .al-root {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface-alt);
     overflow: hidden;
   }
-  .lx-desktop { display: none !important; }
-  .lx-mobile  { display: flex !important; flex: 1 1 0; min-height: 0; flex-direction: column; }
+  .al-desktop-layout { display: none !important; }
+  .al-mobile-layout  { display: flex !important; flex: 1 1 0; min-height: 0; flex-direction: column; }
 }
+
+/* ── Desktop layout: normal flow ── */
 @media (min-width: 768px) {
-  .lx { background: transparent; width: 100%; }
-  .lx-mobile  { display: none !important; }
-  .lx-desktop { display: grid !important; }
+  .al-root {
+    background: transparent;
+    width: 100%;
+  }
+  .al-mobile-layout  { display: none !important; }
+  .al-desktop-layout { display: flex !important; }
 }
 
-/* ════════════════════════════════
-   PROGRESS BAR
-════════════════════════════════ */
-.lx-progress { height: 3px; background: var(--blue-100); flex-shrink: 0; }
-.lx-progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--blue-500), var(--blue-700));
-  transition: width 0.45s cubic-bezier(.4,0,.2,1);
-  box-shadow: 0 0 6px rgba(37,99,235,.35);
-}
+/* ══════════════════════════════════════
+   SHARED COMPONENTS
+══════════════════════════════════════ */
 
-/* ════════════════════════════════
-   TOP NAV (mobile)
-════════════════════════════════ */
-.lx-nav {
+/* Nav bar (mobile) */
+.al-nav {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 18px 12px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  padding: 16px 18px 12px;
+  background: var(--surface-alt);
   flex-shrink: 0;
-  box-shadow: var(--shadow-xs);
+  z-index: 20;
 }
-.lx-nav-title { font-size: 14px; font-weight: 700; color: var(--text); letter-spacing: -0.015em; }
-.lx-nav-sub   { font-size: 11px; color: var(--text-4); margin-top: 1px; }
-.lx-nav-right { display: flex; align-items: center; gap: 10px; }
-.lx-timer-chip {
-  font-size: 12px; font-weight: 600; color: var(--brand);
-  font-family: 'Geist Mono', monospace;
-  background: var(--brand-bg); border: 1px solid var(--brand-bdr);
-  padding: 4px 10px; border-radius: 99px;
+.al-nav-title {
+  font-size: 15px; font-weight: 700; color: var(--text);
+  letter-spacing: -0.01em;
 }
-.lx-icon-btn {
-  width: 34px; height: 34px; border-radius: var(--r-xs);
-  border: 1px solid var(--border); background: var(--surface);
+.al-nav-btn {
+  width: 36px; height: 36px; border-radius: 10px;
+  border: 1.5px solid var(--border); background: var(--surface);
   display: flex; align-items: center; justify-content: center;
-  cursor: pointer; color: var(--text-3);
-  box-shadow: var(--shadow-xs);
-  transition: background .12s, border-color .12s, color .12s;
+  cursor: pointer; color: var(--text); box-shadow: var(--shadow-sm);
+  -webkit-tap-highlight-color: transparent;
 }
-.lx-icon-btn:hover { background: var(--slate-100); border-color: var(--border-2); color: var(--text-2); }
+.al-nav-btn:active { opacity: 0.7; }
 
-/* ════════════════════════════════
-   SCROLL AREA
-════════════════════════════════ */
-.lx-scroll {
-  flex: 1 1 0; min-height: 0; overflow-y: auto;
-  padding: 16px 15px 8px;
-  display: flex; flex-direction: column; gap: 10px;
+/* Progress pill */
+.al-progress-bar {
+  height: 4px; background: var(--border); border-radius: 99px; overflow: hidden;
+  flex-shrink: 0;
+}
+.al-progress-fill {
+  height: 100%; background: var(--brand); border-radius: 99px;
+  transition: width 0.4s ease;
+}
+
+/* Scrollable zone (mobile) */
+.al-scroll {
+  flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  padding: 0 16px; display: flex; flex-direction: column; gap: 0;
   scrollbar-width: none;
-  background: var(--bg);
 }
-.lx-scroll::-webkit-scrollbar { display: none; }
+.al-scroll::-webkit-scrollbar { display: none; }
 
-/* ════════════════════════════════
-   STATUS PILL
-════════════════════════════════ */
-.lx-status-row {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 2px;
+/* ── Avatar ── */
+.al-avatar-wrap {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 20px 0 12px; gap: 0;
 }
-.lx-pill {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 5px 12px; border-radius: 99px;
-  font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
-  border: 1px solid transparent;
+.al-avatar-ring {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  width: 160px; height: 160px;
 }
-.lx-pill.idle  { background: var(--slate-100); color: var(--text-3); border-color: var(--border); }
-.lx-pill.speak { background: var(--blue-50);   color: var(--blue-600); border-color: var(--blue-200); }
-.lx-pill.rec   { background: var(--red-50);    color: var(--red-600);  border-color: #FCA5A5; }
-.lx-pill.proc  { background: var(--green-50);  color: var(--green-600); border-color: #86EFAC; }
-.lx-pill.count { background: #FFFBEB; color: #D97706; border-color: #FCD34D; }
-.lx-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
-.lx-pill.rec .lx-dot   { animation: lxBlink .85s ease-in-out infinite; }
-.lx-pill.speak .lx-dot { animation: lxPulse 1.2s ease-in-out infinite; }
-@keyframes lxBlink { 0%,100%{opacity:1} 50%{opacity:.15} }
-@keyframes lxPulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.7);opacity:.4} }
-.lx-pct { font-size: 11px; font-weight: 500; color: var(--text-4); }
-
-/* ════════════════════════════════
-   AI PROMPT CARD
-════════════════════════════════ */
-.lx-prompt-card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: 16px 18px;
-  box-shadow: var(--shadow-sm);
-  position: relative; overflow: hidden;
+.al-avatar-circle {
+  width: 128px; height: 128px; border-radius: 50%;
+  background: var(--surface); border: 2.5px solid var(--brand);
+  overflow: hidden; position: relative;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 24px rgba(79,127,250,0.2);
+  transition: box-shadow 0.3s;
 }
-.lx-prompt-card::before {
-  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-  background: linear-gradient(90deg, var(--blue-400), var(--blue-700));
-  border-radius: var(--r-lg) var(--r-lg) 0 0;
+.al-avatar-circle.speaking {
+  box-shadow: 0 4px 40px rgba(79,127,250,0.45);
+  animation: avatarGlow 2s ease-in-out infinite;
 }
-.lx-prompt-label {
-  font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--blue-500);
-  margin-bottom: 9px; display: flex; align-items: center; gap: 5px;
+@keyframes avatarGlow {
+  0%,100% { box-shadow: 0 4px 24px rgba(79,127,250,0.2); }
+  50%      { box-shadow: 0 4px 44px rgba(79,127,250,0.5); }
 }
-.lx-prompt-text {
-  font-size: 15px; font-weight: 500; color: var(--text); line-height: 1.7;
-}
-.lx-prompt-text::before { content: '"'; color: var(--blue-400); margin-right: 1px; }
-.lx-prompt-text::after  { content: '"'; color: var(--blue-400); margin-left: 1px; }
-.lx-prompt-rom { font-size: 12px; color: var(--text-4); margin-top: 7px; font-style: italic; }
-.lx-prompt-en  {
-  font-size: 12px; color: var(--text-4); margin-top: 7px;
-  padding-top: 8px; border-top: 1px solid var(--border);
-}
-
-/* ════════════════════════════════
-   YOUR LINE CARD
-════════════════════════════════ */
-.lx-say-card {
-  background: linear-gradient(145deg, var(--blue-50) 0%, #EFF8FF 100%);
-  border: 1.5px solid var(--blue-200);
-  border-radius: var(--r-lg);
-  padding: 16px 18px;
-  box-shadow: 0 2px 8px rgba(37,99,235,.08);
-  position: relative; overflow: hidden;
-}
-.lx-say-card::after {
-  content: ''; position: absolute; top: -40px; right: -40px;
-  width: 120px; height: 120px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(37,99,235,.07) 0%, transparent 70%);
+.al-pulse-ring {
+  position: absolute; border-radius: 50%;
+  border: 2px solid rgba(79,127,250,0.3);
+  animation: pulseOut 2s ease-out infinite;
   pointer-events: none;
 }
-.lx-say-label {
-  font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--blue-600);
-  margin-bottom: 9px; display: flex; align-items: center; gap: 6px;
+.al-pulse-ring.r1 { inset: -14px; }
+.al-pulse-ring.r2 { inset: -28px; animation-delay: 0.55s; }
+@keyframes pulseOut {
+  0%   { transform: scale(0.9); opacity: 0.65; }
+  100% { transform: scale(1.1); opacity: 0; }
 }
-.lx-say-badge {
-  width: 16px; height: 16px; border-radius: 50%;
-  background: var(--blue-100); border: 1px solid var(--blue-200);
-  display: inline-flex; align-items: center; justify-content: center;
-  font-size: 8px; color: var(--blue-600); font-weight: 700;
+.al-rec-badge {
+  position: absolute; bottom: -2px; left: 50%; transform: translateX(-50%);
+  background: var(--brand); color: white;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 4px 12px; border-radius: 99px;
+  display: flex; align-items: center; gap: 5px; white-space: nowrap;
 }
-.lx-say-text { font-size: 16px; font-weight: 600; color: var(--text); line-height: 1.65; position: relative; z-index: 1; }
-.lx-say-rom  { font-size: 12px; color: var(--blue-500); margin-top: 6px; font-style: italic; position: relative; z-index: 1; }
-.lx-say-en   { font-size: 12px; color: var(--text-4); margin-top: 6px; padding-top: 7px; border-top: 1px solid var(--blue-200); position: relative; z-index: 1; }
+.al-rec-dot {
+  width: 5px; height: 5px; border-radius: 50%; background: white;
+  animation: blink 0.85s ease-in-out infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
 
-/* ════════════════════════════════
-   RECORDING TIMER
-════════════════════════════════ */
-.lx-timer-wrap {
+.al-avatar-name {
+  font-size: 19px; font-weight: 800; color: var(--text);
+  margin: 12px 0 2px; text-align: center;
+}
+.al-avatar-sub {
+  font-size: 13px; font-weight: 600; color: var(--brand);
+  margin: 0 0 14px; text-align: center;
+}
+
+/* Avatar switcher pills */
+.al-ava-switcher {
+  display: inline-flex; gap: 4px; padding: 4px;
+  background: var(--surface); border-radius: 99px;
+  border: 1.5px solid var(--border); box-shadow: var(--shadow-sm);
+  margin-bottom: 16px;
+}
+.al-ava-pill {
+  padding: 6px 14px; border-radius: 99px;
+  font-size: 12px; font-weight: 700; border: none; cursor: pointer;
+  transition: all 0.2s; font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.al-ava-pill.active {
+  background: var(--brand); color: white;
+  box-shadow: 0 3px 10px rgba(79,127,250,0.38);
+}
+.al-ava-pill:not(.active) {
+  background: transparent; color: var(--text-sub);
+}
+
+/* ── Content cards ── */
+.al-label {
+  font-size: 10px; font-weight: 800; letter-spacing: 0.13em;
+  text-transform: uppercase; color: var(--text-muted);
+  text-align: center; margin: 0 0 7px;
+}
+.al-label.blue { color: var(--brand); }
+
+.al-prompt-card {
+  background: var(--surface); border-radius: var(--radius-lg);
+  padding: 16px 20px; text-align: center;
+  font-size: 16px; font-style: italic; font-weight: 600;
+  color: var(--text); line-height: 1.6;
+  box-shadow: var(--shadow-sm); margin-bottom: 14px;
+  border: 1px solid var(--border);
+}
+.al-prompt-rom {
+  font-size: 12px; font-style: italic; color: var(--text-sub); margin-top: 7px;
+}
+.al-prompt-en {
+  font-size: 12px; color: var(--text-sub); margin-top: 6px;
+  padding-top: 7px; border-top: 1px solid var(--border); font-style: normal;
+}
+
+.al-say-card {
+  background: rgba(79,127,250,0.06); border: 2px dashed rgba(79,127,250,0.28);
+  border-radius: var(--radius-lg); padding: 16px 20px; text-align: center;
+  margin-bottom: 14px;
+}
+.al-say-text {
+  font-size: 17px; font-weight: 800; color: var(--text); line-height: 1.5;
+}
+.al-say-text u {
+  color: var(--brand); text-decoration: underline;
+  text-underline-offset: 3px; text-decoration-thickness: 2px;
+}
+.al-say-rom { font-size: 12px; font-style: italic; color: var(--text-sub); margin-top: 6px; }
+.al-say-en  { font-size: 12px; color: var(--text-sub); margin-top: 4px; }
+
+/* Timer bar */
+.al-timer-bar {
+  width: 100%; height: 4px; background: var(--border);
+  border-radius: 99px; overflow: hidden; margin-bottom: 5px;
+}
+.al-timer-fill {
+  height: 100%; border-radius: 99px; background: var(--brand);
+  transition: width 0.5s linear, background 0.4s;
+}
+.al-timer-fill.urgent { background: var(--red); }
+.al-timer-label {
+  font-size: 12px; font-weight: 600; color: var(--text-sub); text-align: center;
+}
+
+/* Transcript box */
+.al-transcript-card {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--r-md); padding: 13px 15px;
-  box-shadow: var(--shadow-xs);
-}
-.lx-timer-bar  { height: 4px; background: var(--slate-100); border-radius: 99px; overflow: hidden; }
-.lx-timer-fill {
-  height: 100%; border-radius: 99px;
-  background: linear-gradient(90deg, var(--blue-500), var(--blue-400));
-  transition: width .5s linear, background .3s;
-}
-.lx-timer-fill.urgent { background: linear-gradient(90deg, var(--red-500), var(--red-400)); }
-.lx-timer-label {
-  font-size: 11px; font-weight: 500; color: var(--text-3); margin-top: 6px;
-  display: flex; align-items: center; justify-content: space-between;
-  font-family: 'Geist Mono', monospace;
-}
-.lx-live-tx {
-  margin-top: 10px; padding: 10px 12px;
-  background: var(--slate-50); border-radius: var(--r-xs);
-  font-size: 13px; color: var(--text-2); font-style: italic;
-  line-height: 1.55; min-height: 40px; border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 13px 16px;
+  font-size: 14px; font-style: italic; font-weight: 500;
+  color: var(--text-sub); min-height: 48px; text-align: center;
+  margin-bottom: 14px;
 }
 
-/* ════════════════════════════════
-   BOTTOM CONTROLS (mobile)
-════════════════════════════════ */
-.lx-bottom {
-  flex-shrink: 0;
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  padding: 16px 18px 36px;
-  display: flex; flex-direction: column; align-items: center; gap: 12px;
-  box-shadow: 0 -4px 20px rgba(15,23,42,.06);
+/* ── Bottom controls (mobile) ── */
+.al-bottom {
+  flex-shrink: 0; display: flex; flex-direction: column;
+  align-items: center; gap: 8px; padding: 12px 18px 28px;
+  background: var(--surface-alt);
 }
-.lx-controls-row { display: flex; align-items: center; justify-content: center; gap: 14px; width: 100%; }
 
-/* Mic button */
-.lx-mic-btn {
-  width: 66px; height: 66px; border-radius: 50%; border: none;
+.al-rec-btn {
+  width: 68px; height: 68px; border-radius: 50%; border: none;
   cursor: pointer; display: flex; align-items: center; justify-content: center;
   position: relative; -webkit-tap-highlight-color: transparent;
-  transition: transform .12s, box-shadow .15s;
-}
-.lx-mic-btn.start {
-  background: linear-gradient(145deg, var(--blue-500), var(--blue-700));
-  box-shadow: var(--shadow-brand);
+  transition: transform 0.12s, box-shadow 0.12s;
+  background: var(--brand); box-shadow: var(--shadow-brand);
   color: white;
 }
-.lx-mic-btn.start:hover  { transform: scale(1.06); box-shadow: 0 6px 24px rgba(37,99,235,.45); }
-.lx-mic-btn.start:active { transform: scale(0.94); }
-.lx-mic-btn.stop {
-  background: linear-gradient(145deg, var(--red-400), var(--red-600));
-  box-shadow: 0 4px 16px rgba(239,68,68,.35);
-  color: white;
+.al-rec-btn:active { transform: scale(0.9); }
+.al-rec-btn.stop  { background: var(--brand); }
+.al-ripple {
+  position: absolute; inset: -10px; border-radius: 50%;
+  border: 2px solid rgba(79,127,250,0.45);
+  animation: ripple 1.5s ease-out infinite;
+  pointer-events: none;
 }
-.lx-mic-btn.stop:hover  { transform: scale(1.06); }
-.lx-mic-btn.stop:active { transform: scale(0.94); }
-
-/* Pulse rings when recording */
-.lx-ring1 {
-  position: absolute; inset: -9px; border-radius: 50%;
-  border: 2px solid rgba(239,68,68,.3);
-  animation: lxRipple 1.5s ease-out infinite; pointer-events: none;
+@keyframes ripple {
+  0%   { transform: scale(0.86); opacity: 0.8; }
+  100% { transform: scale(1.55); opacity: 0; }
 }
-.lx-ring2 {
-  position: absolute; inset: -18px; border-radius: 50%;
-  border: 1.5px solid rgba(239,68,68,.15);
-  animation: lxRipple 1.5s ease-out .5s infinite; pointer-events: none;
-}
-@keyframes lxRipple { 0%{transform:scale(.86);opacity:.9} 100%{transform:scale(1.5);opacity:0} }
-
-.lx-state-btn {
-  flex: 1; max-width: 200px; height: 50px; border-radius: var(--r-md);
-  border: 1px solid var(--border); background: var(--surface);
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  font-family: 'Geist', sans-serif; font-size: 13px; font-weight: 600;
-  color: var(--text-3); pointer-events: none; box-shadow: var(--shadow-xs);
-}
-.lx-btn-hint { font-size: 11px; font-weight: 500; color: var(--text-4); letter-spacing: .015em; text-align: center; }
-
-/* ════════════════════════════════
-   WAVE BARS
-════════════════════════════════ */
-.lx-wave { display: flex; align-items: center; gap: 3px; }
-.lx-wave-bar {
-  width: 3px; border-radius: 99px;
-  background: linear-gradient(180deg, var(--blue-400), var(--blue-600));
-  animation: lxWave var(--dur) ease-in-out var(--delay) infinite alternate;
-}
-@keyframes lxWave { from{transform:scaleY(.1)} to{transform:scaleY(1)} }
-
-/* ════════════════════════════════
-   DESKTOP GRID
-════════════════════════════════ */
-.lx-desktop {
-  grid-template-columns: 280px 1fr;
-  gap: 20px; align-items: start; width: 100%;
-}
-.lx-sidebar { display: flex; flex-direction: column; gap: 12px; }
-
-.lx-panel {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--r-lg); padding: 18px;
-  box-shadow: var(--shadow-sm);
-}
-.lx-panel-title {
-  font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--text-4); margin-bottom: 14px;
-}
-.lx-session-name { font-size: 15px; font-weight: 700; color: var(--text); line-height: 1.4; margin-bottom: 3px; }
-.lx-session-meta { font-size: 12px; color: var(--text-3); margin-bottom: 12px; }
-.lx-desk-timer {
-  font-size: 32px; font-weight: 800; color: var(--brand);
-  font-family: 'Geist Mono', monospace;
-  letter-spacing: -0.03em; line-height: 1; margin-bottom: 2px;
-}
-.lx-desk-timer-lbl { font-size: 10px; color: var(--text-4); letter-spacing: .05em; text-transform: uppercase; }
-
-/* ── Chat feed ── */
-.lx-chat {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--r-lg); padding: 16px;
-  max-height: 340px; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 10px;
-  box-shadow: var(--shadow-sm);
-  scrollbar-width: thin; scrollbar-color: var(--slate-200) transparent;
-}
-.lx-chat::-webkit-scrollbar { width: 3px; }
-.lx-chat::-webkit-scrollbar-thumb { background: var(--slate-200); border-radius: 99px; }
-.lx-chat-empty { text-align: center; color: var(--text-4); font-size: 12px; padding: 24px 0; }
-
-.lx-bw { display: flex; flex-direction: column; max-width: 80%; }
-.lx-bw.ai   { align-self: flex-start; }
-.lx-bw.user { align-self: flex-end; }
-.lx-brole {
-  font-size: 9px; font-weight: 700; letter-spacing: .08em;
-  text-transform: uppercase; margin-bottom: 4px; padding: 0 4px;
-}
-.lx-bw.ai   .lx-brole { color: var(--blue-400); }
-.lx-bw.user .lx-brole { color: var(--blue-500); text-align: right; }
-
-.lx-bubble { padding: 10px 14px; border-radius: 16px; font-size: 13.5px; line-height: 1.6; }
-.lx-bubble.ai {
-  background: var(--slate-50); color: var(--text);
-  border: 1px solid var(--border); border-top-left-radius: 4px;
-}
-.lx-bubble.user {
-  background: linear-gradient(135deg, var(--blue-600), var(--blue-700));
-  color: white; border-top-right-radius: 4px;
-  box-shadow: 0 2px 10px rgba(37,99,235,.25);
-}
-.lx-brom { font-size: 11px; font-style: italic; opacity: .6; margin-top: 5px; }
-.lx-ben  { font-size: 11px; opacity: .55; margin-top: 4px; }
-
-/* ── Desktop controls ── */
-.lx-ctrl {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--r-lg); padding: 20px;
-  display: flex; flex-direction: column; gap: 14px;
-  box-shadow: var(--shadow-sm);
-}
-.lx-ctrl-status { font-size: 12px; font-weight: 500; color: var(--text-3); }
-
-.lx-desk-rec {
-  padding: 12px 26px; border-radius: var(--r-md); border: none;
-  font-family: 'Geist', sans-serif; font-size: 14px; font-weight: 700;
-  cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
-  transition: transform .12s, box-shadow .15s, background .15s;
-  align-self: flex-start;
-}
-.lx-desk-rec:active { transform: scale(.97); }
-.lx-desk-rec.start {
-  background: linear-gradient(135deg, var(--blue-500), var(--blue-700));
-  color: white; box-shadow: var(--shadow-brand);
-}
-.lx-desk-rec.start:hover { box-shadow: 0 6px 20px rgba(37,99,235,.4); }
-.lx-desk-rec.stop {
-  background: var(--red-50); color: var(--red-600);
-  border: 1.5px solid #FCA5A5;
-}
-.lx-desk-rec.stop:hover { background: #FEE2E2; }
-
-/* ════════════════════════════════
-   SETTINGS SHEET
-════════════════════════════════ */
-.lx-overlay {
-  position: fixed; inset: 0; background: rgba(15,23,42,.35);
-  backdrop-filter: blur(8px); z-index: 60;
-}
-.lx-sheet {
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 61;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 20px 20px 0 0;
-  padding: 12px 20px 48px;
-  max-height: 80vh; overflow-y: auto;
-  box-shadow: 0 -8px 32px rgba(15,23,42,.12);
-}
-.lx-sheet-handle { width: 36px; height: 3px; background: var(--slate-200); border-radius: 99px; margin: 0 auto 18px; }
-.lx-sheet-title  { font-size: 16px; font-weight: 700; margin-bottom: 18px; }
-.lx-field        { margin-bottom: 14px; }
-.lx-field-label  {
-  display: block; font-size: 10px; font-weight: 700; letter-spacing: .1em;
-  text-transform: uppercase; color: var(--text-4); margin-bottom: 7px;
-}
-.lx-sheet-done {
-  width: 100%; padding: 13px; border: none; border-radius: var(--r-md);
-  background: linear-gradient(135deg, var(--blue-500), var(--blue-700));
-  color: white; font-weight: 700; font-size: 15px;
-  font-family: 'Geist', sans-serif; cursor: pointer; margin-top: 8px;
-  box-shadow: var(--shadow-brand);
-}
-
-/* ════════════════════════════════
-   COMPLETION
-════════════════════════════════ */
-.lx-done-hero {
-  background: linear-gradient(145deg, var(--blue-600) 0%, var(--blue-800) 100%);
-  border-radius: var(--r-xl); padding: 28px 24px; text-align: center;
-  color: white; box-shadow: 0 8px 32px rgba(37,99,235,.35);
-  position: relative; overflow: hidden;
-}
-.lx-done-hero::before {
-  content: ''; position: absolute; top: -50px; right: -50px;
-  width: 180px; height: 180px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(255,255,255,.12) 0%, transparent 70%);
-}
-.lx-done-hero::after {
-  content: ''; position: absolute; bottom: -40px; left: -40px;
-  width: 140px; height: 140px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(255,255,255,.08) 0%, transparent 70%);
-}
-.lx-done-check {
-  width: 60px; height: 60px; border-radius: 50%;
-  background: rgba(255,255,255,.2); border: 2px solid rgba(255,255,255,.4);
+.al-countdown-ring {
+  width: 68px; height: 68px; border-radius: 50%;
+  background: var(--brand-soft); border: 2px solid var(--brand);
   display: flex; align-items: center; justify-content: center;
-  margin: 0 auto 14px; font-size: 24px; font-weight: 700;
+  font-size: 26px; font-weight: 900; color: var(--brand);
 }
-.lx-done-title { font-size: 22px; font-weight: 800; margin-bottom: 4px; letter-spacing: -0.02em; }
-.lx-done-sub   { font-size: 13px; opacity: .75; margin-bottom: 20px; }
-.lx-done-stats { display: flex; gap: 1px; border-radius: var(--r-md); overflow: hidden; background: rgba(255,255,255,.15); }
-.lx-done-stat  { flex: 1; padding: 14px 0; text-align: center; background: rgba(255,255,255,.08); }
-.lx-done-num   { font-size: 26px; font-weight: 800; line-height: 1; margin-bottom: 3px; font-family: 'Geist Mono', monospace; }
-.lx-done-nm    { font-size: 10px; opacity: .65; letter-spacing: .06em; text-transform: uppercase; }
+.al-dots { display: flex; gap: 6px; align-items: center; height: 68px; }
+.al-dots span {
+  width: 9px; height: 9px; border-radius: 50%; background: var(--brand);
+  animation: dotBounce 0.75s ease-in-out infinite;
+}
+.al-dots span:nth-child(2) { animation-delay: 0.15s; }
+.al-dots span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes dotBounce { 0%,100%{transform:translateY(0);opacity:0.4} 50%{transform:translateY(-8px);opacity:1} }
 
-.lx-replay-btn {
-  display: flex; align-items: center; gap: 7px;
-  padding: 10px 18px; border: none; border-radius: var(--r-xs);
-  background: linear-gradient(135deg, var(--blue-500), var(--blue-700));
-  color: white; font-family: 'Geist', sans-serif; font-size: 13px; font-weight: 700;
-  cursor: pointer; white-space: nowrap; flex-shrink: 0;
-  box-shadow: var(--shadow-brand);
-  transition: box-shadow .15s;
+.al-wave { display: flex; align-items: center; gap: 4px; height: 68px; }
+.al-wave-bar {
+  width: 3.5px; border-radius: 99px; background: var(--brand);
+  animation: waveBar var(--dur) ease-in-out var(--delay) infinite alternate;
 }
-.lx-replay-btn:hover { box-shadow: 0 6px 20px rgba(37,99,235,.4); }
-.lx-replay-btn.stop-v {
-  background: var(--red-50); color: var(--red-600);
-  border: 1.5px solid #FCA5A5; box-shadow: none;
-}
-.lx-prog-track { flex: 1; }
-.lx-prog-bar   { height: 3px; background: var(--slate-100); border-radius: 99px; overflow: hidden; }
-.lx-prog-fill  { height: 100%; background: linear-gradient(90deg, var(--blue-500), var(--blue-400)); border-radius: 99px; transition: width .4s; }
-.lx-prog-label { font-size: 10px; color: var(--text-4); margin-top: 4px; font-family: 'Geist Mono', monospace; }
+@keyframes waveBar { from{transform:scaleY(0.15)} to{transform:scaleY(1)} }
 
-.lx-back-btn {
-  width: 100%; padding: 12px; border: 1px solid var(--border);
-  border-radius: var(--r-md); background: var(--surface); color: var(--text-3);
-  font-family: 'Geist', sans-serif; font-size: 13px; font-weight: 600;
-  cursor: pointer; box-shadow: var(--shadow-xs);
-  transition: background .12s, color .12s;
+.al-btn-label {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-muted); text-align: center;
 }
-.lx-back-btn:hover { background: var(--slate-50); color: var(--text-2); }
 
-.lx-txlist {
+/* ── Settings sheet ── */
+.al-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.38);
+  backdrop-filter: blur(4px); z-index: 60;
+}
+.al-sheet {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 61;
+  background: var(--surface); border-radius: 24px 24px 0 0;
+  padding: 16px 20px 40px;
+  max-width: 480px; margin: 0 auto;
+}
+.al-sheet-handle {
+  width: 36px; height: 4px; background: var(--border);
+  border-radius: 99px; margin: 0 auto 18px;
+}
+.al-sheet-title { font-size: 16px; font-weight: 800; margin-bottom: 18px; }
+.al-field { margin-bottom: 14px; }
+.al-field-label {
+  display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 7px;
+}
+.al-sheet-done {
+  width: 100%; padding: 14px; border: none; border-radius: 14px;
+  background: var(--brand); color: white; font-weight: 800; font-size: 15px;
+  font-family: inherit; cursor: pointer; margin-top: 6px;
+}
+
+/* ── Completion screen ── */
+.al-done-wrap {
+  flex: 1 1 0; min-height: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; padding: 20px 16px; gap: 14px;
+  overflow: hidden;
+}
+.al-done-hero {
+  width: 100%;
+  background: linear-gradient(135deg, #12B76A 0%, #059669 100%);
+  border-radius: var(--radius-lg); padding: 26px 22px; text-align: center; color: white;
+  box-shadow: 0 10px 36px rgba(18,183,106,0.35);
+}
+.al-done-emoji { font-size: 44px; display: block; margin-bottom: 4px; }
+.al-done-title { font-size: 21px; font-weight: 900; margin: 0 0 3px; }
+.al-done-sub   { font-size: 13px; opacity: 0.82; margin: 0 0 16px; }
+.al-done-stats { display: flex; }
+.al-done-stat  { flex: 1; text-align: center; }
+.al-done-stat + .al-done-stat { border-left: 1px solid rgba(255,255,255,0.22); }
+.al-done-num { font-size: 28px; font-weight: 900; margin: 0; }
+.al-done-nm  { font-size: 11px; opacity: 0.72; margin: 0; }
+
+.al-play-row { width: 100%; display: flex; align-items: center; gap: 11px; }
+.al-play-btn {
+  background: var(--brand); color: white; border: none; cursor: pointer;
+  padding: 11px 18px; border-radius: 12px; font-weight: 800; font-size: 13px;
+  font-family: inherit; display: flex; align-items: center; gap: 6px;
+  white-space: nowrap; flex-shrink: 0; box-shadow: var(--shadow-brand);
+}
+.al-prog-wrap { flex: 1; }
+.al-prog-track { height: 4px; background: var(--border); border-radius: 99px; overflow: hidden; }
+.al-prog-fill  { height: 100%; background: var(--brand); border-radius: 99px; transition: width 0.4s; }
+.al-prog-label { font-size: 11px; font-weight: 600; color: var(--text-muted); margin-top: 3px; }
+
+.al-back-btn {
+  width: 100%; background: var(--surface); border: 1.5px solid var(--border);
+  color: var(--text-sub); cursor: pointer; padding: 13px; border-radius: 14px;
+  font-weight: 700; font-size: 14px; font-family: inherit;
+}
+
+/* ══════════════════════════════════════
+   DESKTOP LAYOUT
+══════════════════════════════════════ */
+
+.al-desktop-layout {
+  flex-direction: row; gap: 28px; align-items: flex-start; width: 100%;
+}
+
+/* Left panel */
+.al-panel-left {
+  width: 300px; flex-shrink: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 0;
+}
+.al-panel-left .al-avatar-wrap { padding: 24px 0 16px; width: 100%; }
+
+/* Right panel */
+.al-panel-right {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px;
+}
+
+/* Desktop header */
+.al-desk-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 4px;
+}
+.al-desk-title { font-size: 22px; font-weight: 800; color: var(--text); }
+.al-desk-meta  { font-size: 13px; color: var(--text-sub); margin-top: 2px; }
+.al-desk-timer { text-align: right; }
+.al-desk-timer-val { font-size: 30px; font-weight: 800; color: var(--brand); line-height: 1; }
+.al-desk-timer-lbl { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* Chat scroll */
+.al-chat-scroll {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--r-lg); padding: 18px;
-  display: flex; flex-direction: column; gap: 10px;
-  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-lg); padding: 20px; max-height: 360px;
+  overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
 }
-.lx-txlist-title {
-  font-size: 10px; font-weight: 700; letter-spacing: .1em;
-  text-transform: uppercase; color: var(--text-4); margin-bottom: 6px;
+.al-chat-scroll::-webkit-scrollbar { width: 4px; }
+.al-chat-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+.al-bubble {
+  max-width: 75%; padding: 12px 16px; border-radius: 16px;
+  font-size: 14px; line-height: 1.55;
+}
+.al-bubble.ai   { background: var(--surface-alt); border: 1px solid var(--border); align-self: flex-start; }
+.al-bubble.user { background: var(--brand); color: white; align-self: flex-end; }
+.al-bubble-role { font-size: 10px; font-weight: 700; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+.al-bubble-rom  { font-size: 11px; font-style: italic; opacity: 0.65; margin-top: 4px; }
+.al-bubble-en   { font-size: 11px; opacity: 0.6; margin-top: 3px; }
+
+/* Desktop voice controls */
+.al-desk-controls {
+  background: linear-gradient(135deg, rgba(79,127,250,0.06) 0%, rgba(79,127,250,0.02) 100%);
+  border: 1.5px solid var(--brand-border); border-radius: var(--radius-lg);
+  padding: 28px 24px; display: flex; flex-direction: column; align-items: center; gap: 18px;
+}
+.al-desk-status { font-size: 14px; font-weight: 600; color: var(--text-sub); text-align: center; }
+.al-desk-prompt { font-size: 15px; font-weight: 700; color: var(--text); text-align: center; margin-bottom: 2px; }
+.al-desk-say {
+  background: rgba(79,127,250,0.07); border: 1.5px dashed rgba(79,127,250,0.3);
+  border-radius: var(--radius-md); padding: 14px 20px; text-align: center; width: 100%;
+}
+.al-desk-say-text { font-size: 17px; font-weight: 800; color: var(--text); line-height: 1.5; }
+.al-desk-say-rom  { font-size: 12px; font-style: italic; color: var(--text-sub); margin-top: 5px; }
+.al-desk-say-en   { font-size: 12px; color: var(--text-sub); margin-top: 4px; }
+
+/* Desktop big buttons */
+.al-desk-btn {
+  padding: 14px 36px; border-radius: 14px; border: none;
+  font-family: inherit; font-size: 15px; font-weight: 800; cursor: pointer;
+  display: flex; align-items: center; gap: 9px;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.al-desk-btn:active { transform: scale(0.97); }
+.al-desk-btn.start {
+  background: var(--brand); color: white; box-shadow: var(--shadow-brand);
+}
+.al-desk-btn.stop {
+  background: var(--red); color: white;
+  box-shadow: 0 6px 24px rgba(240,68,56,0.35);
 }
 
-/* Divider */
-.lx-divider { height: 1px; background: var(--border); margin: 4px 0; }
+/* Desktop recording state */
+.al-desk-rec-row { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; }
+.al-desk-timer-bar { width: 100%; height: 5px; background: var(--border); border-radius: 99px; overflow: hidden; }
+.al-desk-timer-fill { height: 100%; border-radius: 99px; background: var(--brand); transition: width 0.5s linear, background 0.4s; }
+.al-desk-timer-fill.urgent { background: var(--red); }
+.al-desk-transcript {
+  width: 100%; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 12px 16px; font-size: 14px;
+  font-style: italic; color: var(--text-sub); text-align: center; min-height: 46px;
+}
+
+/* Desktop settings panel */
+.al-desk-settings {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 20px;
+}
+.al-desk-settings-title { font-size: 13px; font-weight: 800; color: var(--text-sub); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 14px; }
+
+/* Desktop completion */
+.al-done-desktop {
+  width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;
+}
+.al-done-desktop .al-done-hero { margin: 0; }
+.al-done-replay-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 24px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.al-done-replay-title { font-size: 15px; font-weight: 800; color: var(--text); }
+.al-done-replay-sub { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
+
+/* Transcript list (desktop completion) */
+.al-transcript-list {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 20px; display: flex; flex-direction: column; gap: 12px;
+}
+.al-transcript-list-title { font-size: 13px; font-weight: 800; color: var(--text-sub); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
+
+/* Waveform bars (desktop) */
+.al-desk-wave { display: flex; align-items: center; gap: 4px; height: 44px; }
+.al-desk-wave-bar {
+  width: 3px; border-radius: 99px; background: var(--brand);
+  animation: waveBar var(--dur) ease-in-out var(--delay) infinite alternate;
+}
 `
 
-/* ─── Component ─────────────────────────────────────────────────────────────── */
+// ─── Avatar components ──────────────────────────────────────────────────────────
+const LinguaFace = memo(({ speaking, size = 110 }: { speaking: boolean; size?: number }) => (
+    <motion.svg viewBox="0 0 100 100" width={size} height={size}
+                style={{ transformOrigin: 'center', overflow: 'visible' }}
+                animate={speaking ? { scaleX:[1,1.07,.95,1.04,1], scaleY:[1,.94,1.06,.97,1] } : { scaleX:1, scaleY:1 }}
+                transition={speaking ? { duration:.38, repeat:Infinity, ease:'easeInOut' } : { duration:0 }}
+    >
+        <defs>
+            <radialGradient id="alGrad" cx="38%" cy="32%" r="55%">
+                <stop offset="0%" stopColor="white" stopOpacity=".35"/>
+                <stop offset="100%" stopColor={MASCOT_COLOR} stopOpacity="0"/>
+            </radialGradient>
+        </defs>
+        <path d={BLOB} fill={MASCOT_COLOR}/>
+        <path d={BLOB} fill="url(#alGrad)"/>
+        <ellipse cx="36" cy="42" rx="6" ry="7" fill="white"/>
+        <ellipse cx="64" cy="42" rx="6" ry="7" fill="white"/>
+        <circle cx="37.5" cy="43.5" r="3.2" fill="#0F172A"/>
+        <circle cx="65.5" cy="43.5" r="3.2" fill="#0F172A"/>
+        <circle cx="39" cy="41.5" r="1.2" fill="white"/>
+        <circle cx="67" cy="41.5" r="1.2" fill="white"/>
+        <motion.path
+            d="M 35 58 Q 50 66 65 58"
+            fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round"
+            animate={speaking ? { d:["M 35 58 Q 50 70 65 58","M 35 58 Q 50 63 65 58","M 35 59 Q 50 74 65 59","M 35 58 Q 50 66 65 58"] } : { d:"M 35 58 Q 50 66 65 58" }}
+            transition={speaking ? { duration:.22, repeat:Infinity, ease:'easeInOut' } : { duration:0 }}
+        />
+        <ellipse cx="26" cy="57" rx="7" ry="5" fill="white" opacity=".14"/>
+        <ellipse cx="74" cy="57" rx="7" ry="5" fill="white" opacity=".14"/>
+    </motion.svg>
+))
+LinguaFace.displayName = 'LinguaFace'
+
+const JellyFace = memo(({ speaking, mx, my, size = 110 }: { speaking:boolean; mx:number; my:number; size?:number }) => (
+    <motion.div style={{ width:size, height:size, transformOrigin:'center' }}
+                animate={speaking ? { scaleX:[1,1.07,.95,1.04,1], scaleY:[1,.94,1.06,.97,1] } : { scaleX:1,scaleY:1 }}
+                transition={speaking ? { duration:.38,repeat:Infinity,ease:'easeInOut' } : { duration:0 }}
+    >
+        <motion.div animate={{ borderRadius:JELLY_BORDER_RADIUS }} transition={{ borderRadius:{ repeat:Infinity,duration:5,ease:'linear' } }}
+                    style={{ width:'100%',height:'100%',background:MASCOT_COLOR,position:'relative',overflow:'hidden' }}
+        >
+            <div style={{ position:'absolute',inset:0,background:'radial-gradient(circle at 38% 28%,rgba(255,255,255,.3) 0%,transparent 58%)',pointerEvents:'none',borderRadius:'inherit' }}/>
+            <div style={{ position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',paddingBottom:8 }}>
+                <div style={{ display:'flex',gap:16,marginBottom:8 }}>
+                    {[0,1].map(i => (
+                        <motion.div key={i} style={{ width:16,height:20,background:'white',borderRadius:'50%',position:'relative',overflow:'hidden' }}
+                                    animate={{ scaleY:[1,1,.08,1] }} transition={{ repeat:Infinity,duration:3.5,times:[0,.88,.93,1],delay:i*.1 }}
+                        >
+                            <div style={{ position:'absolute',top:4,left:4,width:7,height:7,background:'#0F172A',borderRadius:'50%' }}/>
+                            <motion.div style={{ position:'absolute',top:3,left:3,width:3.5,height:3.5,background:'white',borderRadius:'50%',x:mx*4,y:my*3 }}/>
+                        </motion.div>
+                    ))}
+                </div>
+                <motion.div style={{ background:'white',borderRadius:50,opacity:.9 }}
+                            animate={speaking ? { width:[14,22,14],height:[5,16,5] } : { width:12,height:4 }}
+                            transition={{ repeat:speaking?Infinity:0,duration:.2 }}
+                />
+            </div>
+        </motion.div>
+    </motion.div>
+))
+JellyFace.displayName = 'JellyFace'
+
+// ─── Main Component ─────────────────────────────────────────────────────────────
 export default function AudioLessonInterface({
                                                  conversation,
                                                  onComplete,
@@ -601,37 +650,43 @@ export default function AudioLessonInterface({
                                                  recordDelaySeconds = 4,
                                              }: AudioLessonInterfaceProps) {
 
-    const [messages,        setMessages]       = useState<ConversationMessage[]>([])
-    const [currentTurnIdx,  setCurrentTurnIdx] = useState(0)
-    const [isListening,     setIsListening]    = useState(false)
-    const [isRecording,     setIsRecording]    = useState(false)
-    const [isProcessing,    setIsProcessing]   = useState(false)
-    const [conversationEnd, setConversationEnd]= useState(false)
-    const [elapsedTime,     setElapsedTime]    = useState(0)
-    const [liveTranscript,  setLiveTranscript] = useState('')
-    const [isPlayingAll,    setIsPlayingAll]   = useState(false)
-    const [playPct,         setPlayPct]        = useState(0)
-    const [language,        setLanguage]       = useState(defaultLanguage)
-    const [voiceAgentId,    setVoiceAgentId]   = useState(defaultVoiceAgentId ?? '')
-    const [browserVoices,   setBrowserVoices]  = useState<SpeechSynthesisVoice[]>([])
-    const [countdownActive, setCountdownActive]= useState(false)
-    const [countdownLeft,   setCountdownLeft]  = useState(0)
-    const [recTimeLeft,     setRecTimeLeft]    = useState<number|null>(null)
-    const [userRoleNorm,    setUserRoleNorm]   = useState<string|null>(null)
-    const [aiRoleNorm,      setAiRoleNorm]     = useState<string|null>(null)
-    const [settingsOpen,    setSettingsOpen]   = useState(false)
-    const [savedLang]                          = useState<string|null>(() =>
+    // ── State ──────────────────────────────────────────────────────────────────
+    const [messages,         setMessages]        = useState<ConversationMessage[]>([])
+    const [currentTurnIdx,   setCurrentTurnIdx]  = useState(0)
+    const [isListening,      setIsListening]     = useState(false)
+    const [isRecording,      setIsRecording]     = useState(false)
+    const [isProcessing,     setIsProcessing]    = useState(false)
+    const [conversationEnd,  setConversationEnd] = useState(false)
+    const [elapsedTime,      setElapsedTime]     = useState(0)
+    const [liveTranscript,   setLiveTranscript]  = useState('')
+    const [isPlayingAll,     setIsPlayingAll]    = useState(false)
+    const [playPct,          setPlayPct]         = useState(0)
+    const [language,         setLanguage]        = useState(defaultLanguage)
+    const [voiceAgentId,     setVoiceAgentId]    = useState(defaultVoiceAgentId ?? '')
+    const [browserVoices,    setBrowserVoices]   = useState<SpeechSynthesisVoice[]>([])
+    const [countdownActive,  setCountdownActive] = useState(false)
+    const [countdownLeft,    setCountdownLeft]   = useState(0)
+    const [recTimeLeft,      setRecTimeLeft]     = useState<number|null>(null)
+    const [userRoleNorm,     setUserRoleNorm]    = useState<string|null>(null)
+    const [aiRoleNorm,       setAiRoleNorm]      = useState<string|null>(null)
+    const [avatarId,         setAvatarId]        = useState<AvatarId>('jelly')
+    const [mousePos,         setMousePos]        = useState({ x:0, y:0 })
+    const [settingsOpen,     setSettingsOpen]    = useState(false)
+    const [savedLang]                            = useState<string|null>(() =>
         typeof window !== 'undefined' ? localStorage.getItem('selected-language-code') : null)
 
     const scrollRef     = useRef<HTMLDivElement>(null)
     const chatScrollRef = useRef<HTMLDivElement>(null)
-    const vrRef         = useRef(new VoiceRecorder())
-    const ttsRef        = useRef(new TextToSpeech())
-    const timerRef      = useRef<NodeJS.Timeout|null>(null)
-    const cdRef         = useRef<NodeJS.Timeout|null>(null)
-    const cdTurnRef     = useRef<number|null>(null)
-    const recTRef       = useRef<NodeJS.Timeout|null>(null)
-    const initialized   = useRef(false)
+
+    // ── Refs ───────────────────────────────────────────────────────────────────
+    const vrRef       = useRef(new VoiceRecorder())
+    const ttsRef      = useRef(new TextToSpeech())
+    const timerRef    = useRef<NodeJS.Timeout|null>(null)
+    const cdRef       = useRef<NodeJS.Timeout|null>(null)
+    const cdTurnRef   = useRef<number|null>(null)
+    const recTRef     = useRef<NodeJS.Timeout|null>(null)
+    const initialized = useRef(false)
+
     const idxRef        = useRef(0)
     const isRecRef      = useRef(false)
     const isListRef     = useRef(false)
@@ -648,18 +703,28 @@ export default function AudioLessonInterface({
     useEffect(() => { uRoleRef.current = userRoleNorm }, [userRoleNorm])
     useEffect(() => { aRoleRef.current = aiRoleNorm }, [aiRoleNorm])
 
+    // Inject CSS
     useEffect(() => {
-        const id = 'lx-styles'
+        const id = 'al-styles'
         if (!document.getElementById(id)) {
-            const el = document.createElement('style'); el.id = id; el.textContent = STYLES
+            const el = document.createElement('style'); el.id = id; el.textContent = GLOBAL_STYLES
             document.head.appendChild(el)
         }
     }, [])
 
+    // Mouse tracking
+    useEffect(() => {
+        const fn = (e: MouseEvent) => setMousePos({ x:(e.clientX/window.innerWidth)*2-1, y:(e.clientY/window.innerHeight)*2-1 })
+        window.addEventListener('mousemove', fn)
+        return () => window.removeEventListener('mousemove', fn)
+    }, [])
+
+    // Auto-scroll chat (desktop)
     useEffect(() => {
         if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight
     }, [messages])
 
+    // Role detection
     useEffect(() => {
         const t0 = conversation.turns[0], t1 = conversation.turns[1]
         if (t0 && t1 && normalizeRole(t0.role) !== normalizeRole(t1.role)) {
@@ -673,6 +738,7 @@ export default function AudioLessonInterface({
         }
     }, [conversation])
 
+    // Voices
     const excludedLangs = ['fr-FR','es-ES','ar-SA','es-US','zh-CH','zh-CN']
     const getLanguages = () => {
         const codes = Array.from(new Set(browserVoices.map(v => v.lang)))
@@ -705,12 +771,13 @@ export default function AudioLessonInterface({
         voiceRef.current = browserVoices.find(v => `${v.name}|${v.lang}` === voiceAgentId) || null
     }, [voiceAgentId, browserVoices])
 
+    // Timer
     useEffect(() => {
         timerRef.current = setInterval(() => setElapsedTime(p => p+1), 1000)
         return () => { if (timerRef.current) clearInterval(timerRef.current) }
     }, [])
 
-    /* ── Derived ─────────────────────────────────────────────────────────────── */
+    // ── Derived ────────────────────────────────────────────────────────────────
     const isUserTurnByIdx = (idx: number) => {
         const turn = conversation.turns[idx]; if (!turn) return false
         const n = normalizeRole(turn.role), u = uRoleRef.current
@@ -718,29 +785,34 @@ export default function AudioLessonInterface({
     }
 
     const currentTurn  = conversation.turns[currentTurnIdx]
+    const uiLocale     = getUILocale(language)
     const showEN       = language.split('-')[0].toLowerCase() !== 'en'
     const recDuration  = conversation?.recordingTime ?? 10
     const timerPct     = recTimeLeft != null ? (recTimeLeft / recDuration) * 100 : 0
     const timerUrgent  = recTimeLeft != null && recTimeLeft <= 3
     const isUserTurn   = isUserTurnByIdx(currentTurnIdx)
     const lastAiMsg    = [...messages].reverse().find(m => m.speaker === 'ai')
+    const aiRoleLabel  = lastAiMsg
+        ? lastAiMsg.role.charAt(0).toUpperCase() + lastAiMsg.role.slice(1) + "'s Prompt"
+        : aiRoleNorm ? aiRoleNorm.charAt(0).toUpperCase() + aiRoleNorm.slice(1) + "'s Prompt"
+            : "Prompt"
     const progressPct  = ((currentTurnIdx + 1) / conversation.turns.length) * 100
 
+    // Control visibility
     const showStart    = isUserTurn && !isRecording && !isListening && !isProcessing && !countdownActive
     const showStop     = isRecording
     const showCd       = countdownActive && !isRecording && !isListening && !isProcessing
     const showProc     = isProcessing
     const showSpeaking = isListening
 
-    const pillClass = isRecording ? 'rec' : isListening ? 'speak' : isProcessing ? 'proc' : countdownActive ? 'count' : 'idle'
-    const pillLabel = isRecording ? 'Recording'
-        : isListening ? 'Speaking'
-            : isProcessing ? 'Processing'
-                : countdownActive ? `Starting in ${countdownLeft}s`
+    const avatarSub = isListening ? 'Speaking…'
+        : isRecording ? 'Listening…'
+            : isProcessing ? 'Processing…'
+                : countdownActive ? `Starting in ${countdownLeft}…`
                     : isUserTurn ? 'Your turn'
                         : 'Ready'
 
-    /* ── Core logic ──────────────────────────────────────────────────────────── */
+    // ── Core logic ─────────────────────────────────────────────────────────────
     const cancelCd = () => {
         if (cdRef.current) { clearInterval(cdRef.current); cdRef.current = null }
         setCountdownActive(false); setCountdownLeft(0)
@@ -761,12 +833,13 @@ export default function AudioLessonInterface({
                 left -= 1; setRecTimeLeft(left)
                 if (left <= 0) {
                     if (recTRef.current) { clearInterval(recTRef.current); recTRef.current = null }
-                    setRecTimeLeft(null); if (isRecRef.current) stopRecording()
+                    setRecTimeLeft(null)
+                    if (isRecRef.current) stopRecording()
                 }
             }, 1000)
         } catch {
             isRecRef.current = false; setIsRecording(false); setRecTimeLeft(null)
-            alert('Microphone access denied.')
+            alert('Microphone access denied. Please allow microphone permissions.')
         }
     }
 
@@ -794,10 +867,11 @@ export default function AudioLessonInterface({
             const nextIdx = turnIdx+1
             const nextTurn = conversation.turns[nextIdx]
             setCurrentTurnIdx(nextIdx); idxRef.current = nextIdx
-            setTimeout(() => { isProcRef.current = false; setIsProcessing(false); playAI(getTurnText(nextTurn, lang), nextTurn.role, nextIdx) }, 900)
+            setTimeout(() => { isProcRef.current = false; setIsProcessing(false); playAI(getTurnText(nextTurn, getLanguageLabelsimple(lang)), nextTurn.role, nextIdx) }, 900)
         } catch (e) {
             isProcRef.current = false; setIsProcessing(false)
-            isRecRef.current = false; setIsRecording(false); console.error(e)
+            isRecRef.current = false; setIsRecording(false)
+            console.error(e)
         }
     }
 
@@ -821,19 +895,20 @@ export default function AudioLessonInterface({
 
     const playAI = (message: string, role: string, turnOrder: number) => {
         cancelCd(); isListRef.current = true; setIsListening(true)
-        setMessages(prev => [...prev, {
+        const msg: ConversationMessage = {
             id:`msg-${Date.now()}`, role, content:message,
             speaker:'ai', timestamp:new Date().toISOString(), turnOrder,
-        }])
+        }
+        setMessages(prev => [...prev, msg])
         ttsRef.current.speak(message, {
-            lang:langRef.current, voice:voiceRef.current??undefined,
+            lang:getLanguageLabelsimple(langRef.current), voice:voiceRef.current??undefined,
             onEnd: () => {
                 isListRef.current = false; setIsListening(false)
                 const nextIdx = turnOrder+1
                 const nextTurn = conversation.turns[nextIdx]
                 setCurrentTurnIdx(nextIdx); idxRef.current = nextIdx
                 if (nextTurn && isUserTurnByIdx(nextIdx)) setTimeout(() => startCd(nextIdx), 0)
-                else if (nextTurn) setTimeout(() => playAI(getTurnText(nextTurn, langRef.current), nextTurn.role, nextIdx), 450)
+                else if (nextTurn) setTimeout(() => playAI(getTurnText(nextTurn, getLanguageLabelsimple(langRef.current)), nextTurn.role, nextIdx), 450)
                 else endConv()
             },
         })
@@ -848,7 +923,7 @@ export default function AudioLessonInterface({
             if (t0 && t1 && normalizeRole(t0.role) !== normalizeRole(t1.role)) detAI = normalizeRole(t0.role)
             const n = normalizeRole(first.role)
             const isAI = detAI ? n===detAI : AI_ROLE_ALIASES.includes(n)
-            if (isAI) playAI(getTurnText(first, langRef.current), first.role, 0)
+            if (isAI) playAI(getTurnText(first, getLanguageLabelsimple(langRef.current)), first.role, 0)
         }, 500)
     }, [])
 
@@ -879,20 +954,57 @@ export default function AudioLessonInterface({
         setIsPlayingAll(false); setPlayPct(100)
     }
 
-    /* ── Settings ────────────────────────────────────────────────────────────── */
-    const renderSettings = () => (
-        <>
-            <div className="lx-field">
-                <span className="lx-field-label">Language / Accent</span>
+    // ── Avatar render helper ───────────────────────────────────────────────────
+    const renderAvatar = (size = 110) => (
+        <AnimatePresence mode="wait">
+            <motion.div key={avatarId}
+                        initial={{opacity:0,scale:.85}} animate={{opacity:1,scale:1}} exit={{opacity:0,scale:.85}}
+                        transition={{duration:.22}}
+            >
+                {avatarId === 'lingua'
+                    ? <LinguaFace speaking={isListening} size={size}/>
+                    : <JellyFace  speaking={isListening} mx={mousePos.x} my={mousePos.y} size={size}/>
+                }
+            </motion.div>
+        </AnimatePresence>
+    )
+
+    // ── Avatar switcher ────────────────────────────────────────────────────────
+    const renderAvatarSwitcher = () => (
+        <div className="al-ava-switcher">
+            {([['lingua','🤖 LinguaPals'],['jelly','🫧 Jelly']] as [AvatarId,string][]).map(([id,label]) => (
+                <button key={id} className={`al-ava-pill${avatarId===id?' active':''}`} onClick={()=>setAvatarId(id)}>
+                    {label}
+                </button>
+            ))}
+        </div>
+    )
+
+    // ── Settings panel (shared) ────────────────────────────────────────────────
+    const renderSettings = (inline = false) => (
+        <div className={inline ? 'al-desk-settings' : ''}>
+            {inline && <div className="al-desk-settings-title">Settings</div>}
+            <div className="al-field">
+                <span className="al-field-label">Avatar</span>
+                <div style={{ display:'flex', gap:8, marginBottom:2 }}>
+                    {([['lingua','🤖 LinguaPals'],['jelly','🫧 Jelly Friend']] as [AvatarId,string][]).map(([id,label])=>(
+                        <button key={id} className={`al-ava-pill${avatarId===id?' active':''}`}
+                                style={{ flex:1, padding:'9px 0', borderRadius:'10px', fontSize:'12px' }}
+                                onClick={()=>setAvatarId(id as AvatarId)}>{label}</button>
+                    ))}
+                </div>
+            </div>
+            <div className="al-field">
+                <span className="al-field-label">Accent</span>
                 <Select value={language} onValueChange={setLanguage}>
                     <SelectTrigger><SelectValue placeholder="Select language"/></SelectTrigger>
                     <SelectContent>
-                        {getLanguages().map(c => <SelectItem key={c} value={c}>{LANGUAGE_LABELS[c]||c}</SelectItem>)}
+                        {getLanguages().map(c=><SelectItem key={c} value={c}>{LANGUAGE_LABELS[c]||c}</SelectItem>)}
                     </SelectContent>
                 </Select>
             </div>
-            <div className="lx-field">
-                <span className="lx-field-label">Voice</span>
+            <div className="al-field">
+                <span className="al-field-label">Voice</span>
                 <Select value={voiceAgentId} onValueChange={setVoiceAgentId}>
                     <SelectTrigger><SelectValue placeholder="Select voice"/></SelectTrigger>
                     <SelectContent>
@@ -902,99 +1014,93 @@ export default function AudioLessonInterface({
                     </SelectContent>
                 </Select>
             </div>
-        </>
-    )
-
-    /* ── Wave bars ───────────────────────────────────────────────────────────── */
-    const waveH = [16, 28, 40, 22, 48, 20, 36, 14, 32, 22]
-    const renderWave = (scale = 1) => (
-        <div className="lx-wave">
-            {waveH.map((h, i) => (
-                <div key={i} className="lx-wave-bar" style={{
-                    height: `${h * scale}px`,
-                    '--dur':   `${0.3 + i * 0.07}s`,
-                    '--delay': `${i * 0.045}s`,
-                } as React.CSSProperties}/>
-            ))}
         </div>
     )
 
-    /* ── COMPLETION ──────────────────────────────────────────────────────────── */
+    // ── COMPLETION SCREEN ──────────────────────────────────────────────────────
     if (conversationEnd) {
         const userMsgCount = messages.filter(m => m.speaker==='user').length
 
-        const heroBanner = (
-            <div className="lx-done-hero">
-                <div className="lx-done-check">✓</div>
-                <p className="lx-done-title">Lesson Complete</p>
-                <p className="lx-done-sub">{conversation.scenario}</p>
-                <div className="lx-done-stats">
-                    <div className="lx-done-stat">
-                        <p className="lx-done-num">{userMsgCount}</p>
-                        <p className="lx-done-nm">Responses</p>
-                    </div>
-                    <div className="lx-done-stat">
-                        <p className="lx-done-num">{formatTime(elapsedTime)}</p>
-                        <p className="lx-done-nm">Duration</p>
-                    </div>
+        const replayControls = (
+            <div className="al-play-row">
+                <button className="al-play-btn"
+                        onClick={isPlayingAll ? ()=>{ttsRef.current.stop();setIsPlayingAll(false)} : playAll}
+                >
+                    {isPlayingAll ? <><StopCircle size={15}/> Stop</> : <><Play size={15}/> Replay</>}
+                </button>
+                <div className="al-prog-wrap">
+                    <div className="al-prog-track"><div className="al-prog-fill" style={{width:`${playPct}%`}}/></div>
+                    <div className="al-prog-label">{Math.round(playPct)}% played</div>
                 </div>
             </div>
         )
 
-        const replayRow = (
-            <div style={{display:'flex',alignItems:'center',gap:12}}>
-                <button className={`lx-replay-btn${isPlayingAll?' stop-v':''}`}
-                        onClick={isPlayingAll ? ()=>{ttsRef.current.stop();setIsPlayingAll(false)} : playAll}
-                >
-                    {isPlayingAll ? <><StopCircle size={14}/> Stop</> : <><Play size={14}/> Replay</>}
-                </button>
-                <div className="lx-prog-track">
-                    <div className="lx-prog-bar"><div className="lx-prog-fill" style={{width:`${playPct}%`}}/></div>
-                    <div className="lx-prog-label">{Math.round(playPct)}% played</div>
+        const heroBanner = (
+            <div className="al-done-hero">
+                <span className="al-done-emoji">🎉</span>
+                <p className="al-done-title">Lesson Complete!</p>
+                <p className="al-done-sub">{conversation.scenario}</p>
+                <div className="al-done-stats">
+                    <div className="al-done-stat">
+                        <p className="al-done-num">{userMsgCount}</p>
+                        <p className="al-done-nm">Responses</p>
+                    </div>
+                    <div className="al-done-stat">
+                        <p className="al-done-num">{formatTime(elapsedTime)}</p>
+                        <p className="al-done-nm">Duration</p>
+                    </div>
                 </div>
             </div>
         )
 
         const transcriptList = (
-            <div className="lx-txlist">
-                <div className="lx-txlist-title">Full Transcript</div>
+            <div className="al-transcript-list">
+                <div className="al-transcript-list-title">Conversation Transcript</div>
                 {messages.map(msg => (
-                    <div key={msg.id} className={`lx-bw ${msg.speaker}`}>
-                        <div className="lx-brole">{msg.role}</div>
-                        <div className={`lx-bubble ${msg.speaker}`}>
-                            {msg.speaker==='ai' ? getTurnText(conversation.turns[msg.turnOrder], language)||msg.content : msg.content}
-                            {msg.speaker==='ai' && getRomanization(conversation.turns[msg.turnOrder], language) &&
-                            <div className="lx-brom">{getRomanization(conversation.turns[msg.turnOrder], language)}</div>}
-                            {msg.speaker==='ai' && showEN && conversation.turns[msg.turnOrder]?.text &&
-                            <div className="lx-ben">EN: {conversation.turns[msg.turnOrder].text}</div>}
-                        </div>
-                        {msg.audioUrl && <audio controls style={{width:'100%',height:28,marginTop:4}} src={msg.audioUrl}/>}
+                    <div key={msg.id} className={`al-bubble ${msg.speaker}`}>
+                        <div className="al-bubble-role">{msg.role}</div>
+                        <div>{msg.speaker==='ai' ? getTurnText(conversation.turns[msg.turnOrder], language)||msg.content : msg.content}</div>
+                        {msg.speaker==='ai' && getRomanization(conversation.turns[msg.turnOrder], language) &&
+                        <div className="al-bubble-rom">{getRomanization(conversation.turns[msg.turnOrder], language)}</div>}
+                        {msg.speaker==='ai' && showEN && conversation.turns[msg.turnOrder]?.text &&
+                        <div className="al-bubble-en">🇬🇧 {conversation.turns[msg.turnOrder].text}</div>}
+                        {msg.audioUrl && <audio controls style={{width:'100%',height:28,marginTop:6}} src={msg.audioUrl}/>}
                     </div>
                 ))}
             </div>
         )
 
         return (
-            <div className="lx">
-                {/* Mobile */}
-                <div className="lx-mobile" style={{display:'flex',flexDirection:'column'}}>
-                    <div className="lx-progress"><div className="lx-progress-fill" style={{width:'100%'}}/></div>
-                    <div style={{flex:'1 1 0',minHeight:0,overflowY:'auto',padding:'20px 15px',display:'flex',flexDirection:'column',gap:12,background:'var(--bg)'}}>
-                        {heroBanner}{replayRow}
-                        <button className="lx-back-btn" onClick={()=>onComplete(messages)}>← Back to Course</button>
+            <div className="al-root">
+                {/* Mobile completion */}
+                <div className="al-mobile-layout" style={{display:'flex', flexDirection:'column'}}>
+                    <div className="al-nav">
+                        <button className="al-nav-btn" onClick={()=>onComplete(messages)}><X size={16}/></button>
+                        <span className="al-nav-title">Practice Session</span>
+                        <div style={{width:36}}/>
+                    </div>
+                    <div className="al-done-wrap">
+                        {heroBanner}
+                        {replayControls}
+                        <button className="al-back-btn" onClick={()=>onComplete(messages)}>
+                            ← Back to Course
+                        </button>
                     </div>
                 </div>
-                {/* Desktop */}
-                <div className="lx-desktop" style={{flexDirection:'column',gap:20,display:'flex'}}>
-                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
+
+                {/* Desktop completion */}
+                <div className="al-desktop-layout" style={{flexDirection:'column', gap:20}}>
+                    <div className="al-done-desktop">
                         {heroBanner}
-                        <div className="lx-panel" style={{display:'flex',flexDirection:'column',gap:14}}>
+                        <div className="al-done-replay-card">
                             <div>
-                                <div style={{fontSize:15,fontWeight:700,marginBottom:4,color:'var(--text)'}}>Replay Session</div>
-                                <div style={{fontSize:12,color:'var(--text-3)'}}>Listen back through the conversation</div>
+                                <div className="al-done-replay-title">Replay Session</div>
+                                <div className="al-done-replay-sub">Listen back through the full conversation</div>
                             </div>
-                            {replayRow}
-                            <button className="lx-back-btn" onClick={()=>onComplete(messages)}>← Back to Course</button>
+                            {replayControls}
+                            <button className="al-back-btn" onClick={()=>onComplete(messages)}>
+                                ← Back to Course
+                            </button>
                         </div>
                     </div>
                     {transcriptList}
@@ -1003,279 +1109,407 @@ export default function AudioLessonInterface({
         )
     }
 
-    /* ── LESSON SCREEN ───────────────────────────────────────────────────────── */
+    // ── LESSON SCREEN ──────────────────────────────────────────────────────────
     return (
-        <div className="lx">
+        <div className="al-root">
 
-            {/* ══ MOBILE ══════════════════════════════════════════════════════════ */}
-            <div className="lx-mobile">
+            {/* ════════════════════════════════
+                MOBILE LAYOUT
+            ════════════════════════════════ */}
+            <div className="al-mobile-layout">
 
-                <div className="lx-progress">
-                    <div className="lx-progress-fill" style={{width:`${progressPct}%`}}/>
-                </div>
+                {/* Nav */}
+                {/*<div className="al-nav">*/}
+                {/*    <button className="al-nav-btn" onClick={()=>onComplete(messages)} aria-label="Close">*/}
+                {/*        <X size={16}/>*/}
+                {/*    </button>*/}
+                {/*    <span className="al-nav-title">Practice Session</span>*/}
+                {/*    <button className="al-nav-btn" onClick={()=>setSettingsOpen(true)} aria-label="Settings">*/}
+                {/*        <Settings size={16}/>*/}
+                {/*    </button>*/}
+                {/*</div>*/}
 
-                <div className="lx-nav">
-                    <div>
-                        <div className="lx-nav-title">{conversation.scenario}</div>
-                        <div className="lx-nav-sub">Turn {currentTurnIdx+1} / {conversation.turns.length}</div>
+
+                {/* Scroll area */}
+                <div className="al-scroll" ref={scrollRef}>
+
+                    {/* Avatar section */}
+                    <div className="al-avatar-wrap mt-6">
+                        {/*{renderAvatarSwitcher()}*/}
+                        <div className="al-avatar-ring">
+                            {isListening && <>
+                                <div className="al-pulse-ring r1"/>
+                                <div className="al-pulse-ring r2"/>
+                            </>}
+                            <div className={`al-avatar-circle${isListening?' speaking':''}`}>
+                                {renderAvatar(110)}
+                                <AnimatePresence>
+                                    {(isRecording || isListening) && (
+                                        <motion.div className="al-rec-badge"
+                                                    initial={{opacity:0,y:4}} animate={{opacity:1,y:0}} exit={{opacity:0,y:4}}
+                                                    transition={{duration:.2}}
+                                        >
+                                            <div className="al-rec-dot"/>
+                                            {isRecording ? 'Recording' : 'Speaking'}
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </div>
+                        </div>
+                        {/*<p className="al-avatar-name">{avatarId==='jelly'?'Jelly Friend':'LinguaPals'}</p>*/}
+                        {/*<p className="al-avatar-sub">{avatarSub}</p>*/}
                     </div>
-                    <div className="lx-nav-right">
-                        <div className="lx-timer-chip">{formatTime(elapsedTime)}</div>
-                        <button className="lx-icon-btn" onClick={()=>setSettingsOpen(true)}>
-                            <Settings size={14}/>
-                        </button>
-                    </div>
-                </div>
 
-                <div className="lx-scroll" ref={scrollRef}>
-
-                    <div className="lx-status-row">
-                        <div className={`lx-pill ${pillClass}`}>
-                            <div className="lx-dot"/>{pillLabel}
-                        </div>
-                        <span className="lx-pct">{Math.round(progressPct)}% done</span>
-                    </div>
-
-                    {/* AI Prompt */}
-                    {lastAiMsg && (
-                        <div className="lx-prompt-card">
-                            <div className="lx-prompt-label">
-                                <Volume2 size={10}/>
-                                {lastAiMsg.role.charAt(0).toUpperCase() + lastAiMsg.role.slice(1)}
-                            </div>
-                            <div className="lx-prompt-text">
-                                {getTurnText(conversation.turns[lastAiMsg.turnOrder], language)||lastAiMsg.content}
-                            </div>
-                            {getRomanization(conversation.turns[lastAiMsg.turnOrder], language) && (
-                                <div className="lx-prompt-rom">{getRomanization(conversation.turns[lastAiMsg.turnOrder], language)}</div>
-                            )}
-                            {showEN && conversation.turns[lastAiMsg.turnOrder]?.text && (
-                                <div className="lx-prompt-en">🇬🇧 {conversation.turns[lastAiMsg.turnOrder].text}</div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Your line */}
-                    {isUserTurn && currentTurn && !isProcessing && (
-                        <div className="lx-say-card">
-                            <div className="lx-say-label">
-                                <span className="lx-say-badge">↗</span>
-                                Your line
-                            </div>
-                            <div className="lx-say-text">"{getTurnText(currentTurn, language)}"</div>
-                            {getRomanization(currentTurn, language) && (
-                                <div className="lx-say-rom">{getRomanization(currentTurn, language)}</div>
-                            )}
-                            {showEN && currentTurn.text && (
-                                <div className="lx-say-en">🇬🇧 {currentTurn.text}</div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Timer */}
-                    {isRecording && (
-                        <div className="lx-timer-wrap">
-                            <div className="lx-timer-bar">
-                                <div className={`lx-timer-fill${timerUrgent?' urgent':''}`} style={{width:`${timerPct}%`}}/>
-                            </div>
-                            <div className="lx-timer-label">
-                                <span>Recording</span>
-                                <span>{recTimeLeft != null && recTimeLeft > 0 ? `${recTimeLeft}s left` : 'Finishing…'}</span>
-                            </div>
-                            {liveTranscript && <div className="lx-live-tx">"{liveTranscript}"</div>}
-                        </div>
-                    )}
-
-                    <div style={{height:8}}/>
-                </div>
-
-                {/* Bottom controls */}
-                <div className="lx-bottom">
-                    {showSpeaking && (
-                        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:10}}>
-                            {renderWave(1)}
-                            <span style={{fontSize:11,color:'var(--text-3)',fontWeight:500}}>AI is speaking…</span>
-                        </div>
-                    )}
-
-                    {showProc && (
-                        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:10}}>
-                            <div style={{display:'flex',gap:6,alignItems:'center',height:32}}>
-                                {[0,1,2].map(i=>(
-                                    <div key={i} style={{
-                                        width:8, height:8, borderRadius:'50%',
-                                        background:'linear-gradient(135deg,var(--blue-400),var(--blue-600))',
-                                        animation:`lxBlink .8s ease-in-out ${i*.18}s infinite`
-                                    }}/>
-                                ))}
-                            </div>
-                            <span style={{fontSize:11,color:'var(--text-3)',fontWeight:500}}>Processing…</span>
-                        </div>
-                    )}
-
-                    {!showSpeaking && !showProc && (
-                        <div className="lx-controls-row">
-                            {showCd && (
-                                <div className="lx-state-btn">
-                                    <span style={{fontSize:20,fontWeight:800,color:'#D97706'}}>{countdownLeft}</span>
-                                    <span style={{fontSize:12}}>Starting…</span>
+                    {/* AI prompt card */}
+                    <AnimatePresence>
+                        {lastAiMsg && (
+                            <motion.div initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0}} transition={{duration:.25}}>
+                                <p className="al-label">{aiRoleLabel}</p>
+                                <div className="al-prompt-card">
+                                    <div>"{getTurnText(conversation.turns[lastAiMsg.turnOrder], getLanguageLabelsimple(language))||lastAiMsg.content}"</div>
+                                    {getRomanization(conversation.turns[lastAiMsg.turnOrder], getLanguageLabelsimple(language)) && (
+                                        <div className="al-prompt-rom">{getRomanization(conversation.turns[lastAiMsg.turnOrder], getLanguageLabelsimple(language))}</div>
+                                    )}
+                                    {showEN && conversation.turns[lastAiMsg.turnOrder]?.text && (
+                                        <div className="al-prompt-en">🇬🇧 {conversation.turns[lastAiMsg.turnOrder].text}</div>
+                                    )}
                                 </div>
-                            )}
-                            {(showStart || showStop) && (
-                                <button
-                                    className={`lx-mic-btn ${showStart?'start':'stop'}`}
-                                    onClick={showStart ? startRecording : stopRecording}
-                                >
-                                    {showStop && <><div className="lx-ring1"/><div className="lx-ring2"/></>}
-                                    {showStart ? <Mic size={26}/> : <Square size={22} fill="white"/>}
-                                </button>
-                            )}
-                        </div>
-                    )}
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
 
-                    <div className="lx-btn-hint">
-                        {showStart    ? 'Tap to record your response'
-                            : showStop  ? 'Tap to finish recording'
-                                : showCd    ? `Auto-starting in ${countdownLeft}s`
-                                    : showProc  ? 'Processing response…'
-                                        : showSpeaking ? 'AI is speaking'
+                    {/* Say this */}
+                    <AnimatePresence mode="wait">
+                        {isUserTurn && currentTurn && !isProcessing && (
+                            <motion.div key={`say-${currentTurnIdx}`}
+                                        initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-4}}
+                                        transition={{duration:.25}}
+                            >
+                                <p className="al-label blue">Say this:</p>
+                                <div className="al-say-card">
+                                    <div className="al-say-text">"{getTurnText(currentTurn, getLanguageLabelsimple(language))}"</div>
+                                    {getRomanization(currentTurn, getLanguageLabelsimple(language)) && (
+                                        <div className="al-say-rom">{getRomanization(currentTurn, getLanguageLabelsimple(language))}</div>
+                                    )}
+                                    {showEN && currentTurn.text && (
+                                        <div className="al-say-en">🇬🇧 {currentTurn.text}</div>
+                                    )}
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    {/* Recording timer + transcript */}
+                    <AnimatePresence>
+                        {isRecording && (
+                            <motion.div initial={{opacity:0,y:6}} animate={{opacity:1,y:0}} exit={{opacity:0}} transition={{duration:.2}}>
+                                <div>
+                                    <div className="al-timer-bar">
+                                        <div className={`al-timer-fill${timerUrgent?' urgent':''}`} style={{width:`${timerPct}%`}}/>
+                                    </div>
+                                    <p className="al-timer-label">
+                                        {recTimeLeft != null && recTimeLeft > 0 ? `${recTimeLeft}s remaining` : 'Finishing…'}
+                                    </p>
+                                </div>
+                                {liveTranscript && <div className="al-transcript-card">{liveTranscript}</div>}
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    <div style={{height:16,flexShrink:0}}/>
+                </div>
+
+
+                {/* Progress */}
+                <div className="al-progress-bar" style={{margin:'0 16px 2px'}}>
+                    <div className="al-progress-fill" style={{width:`${progressPct}%`}}/>
+                </div>
+                {/* Bottom controls */}
+                <div className="al-bottom">
+
+
+                    {/* Settings button — always visible, outside AnimatePresence */}
+                    <button
+                        className="al-nav-btn"
+                        style={{ alignSelf: 'flex-end', marginBottom: 4 }}
+                        onClick={() => setSettingsOpen(true)}
+                        aria-label="Settings"
+                    >
+                        <Settings size={16} />
+                    </button>
+
+                    <AnimatePresence mode="wait">
+                        {showSpeaking && (
+                            <motion.div key="wave" className="al-wave"
+                                        initial={{opacity:0,scale:.85}} animate={{opacity:1,scale:1}} exit={{opacity:0,scale:.85}}>
+                                {[28,20,36,16,40,18,32,22].map((h,i)=>(
+                                    <div key={i} className="al-wave-bar" style={{ height:`${h}px`, '--dur':`${.3+i*.06}s`, '--delay':`${i*.04}s` } as React.CSSProperties}/>
+                                ))}
+                            </motion.div>
+                        )}
+                        {showProc && (
+                            <motion.div key="dots" className="al-dots"
+                                        initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
+                                <span/><span/><span/>
+                            </motion.div>
+                        )}
+                        {showCd && (
+                            <motion.div key="cd"
+                                        initial={{scale:.8,opacity:0}} animate={{scale:1,opacity:1}} exit={{scale:.8,opacity:0}}
+                                        transition={{type:'spring',stiffness:300,damping:20}}>
+                                <div className="al-countdown-ring">{countdownLeft}</div>
+                            </motion.div>
+                        )}
+                        {showStart && (
+                            <motion.button key="start" className="al-rec-btn" onClick={startRecording}
+                                           initial={{scale:.8,opacity:0}} animate={{scale:1,opacity:1}} exit={{scale:.8,opacity:0}}
+                                           transition={{type:'spring',stiffness:340,damping:22}}>
+                                <Mic size={28}/>
+                            </motion.button>
+                        )}
+                        {showStop && (
+                            <motion.button key="stop" className="al-rec-btn stop" onClick={stopRecording}
+                                           initial={{scale:.8,opacity:0}} animate={{scale:1,opacity:1}} exit={{scale:.8,opacity:0}}
+                                           transition={{type:'spring',stiffness:340,damping:22}}>
+                                <div className="al-ripple"/>
+                                <Square size={24} fill="white"/>
+                            </motion.button>
+                        )}
+                    </AnimatePresence>
+
+                    <div className="al-btn-label">
+                        {showStart ? 'Tap to record'
+                            : showStop ? 'Stop recording'
+                                : showCd   ? `Starting in ${countdownLeft}…`
+                                    : showProc ? 'Processing…'
+                                        : showSpeaking ? 'Listening…'
                                             : ''}
                     </div>
+
                 </div>
             </div>
 
-            {/* ══ DESKTOP ══════════════════════════════════════════════════════════ */}
-            <div className="lx-desktop">
+            {/* ════════════════════════════════
+                DESKTOP LAYOUT
+            ════════════════════════════════ */}
+            <div className="al-desktop-layout">
 
-                {/* Sidebar */}
-                <div className="lx-sidebar">
-                    <div className="lx-panel">
-                        <div className="lx-panel-title">Session</div>
-                        <div className="lx-session-name">{conversation.scenario}</div>
-                        <div className="lx-session-meta">
-                            Turn {currentTurnIdx+1} of {conversation.turns.length} · {Math.round(progressPct)}%
+                {/* Left panel */}
+                <div className="al-panel-left">
+
+                    {/* Avatar */}
+                    <div className="al-avatar-wrap">
+                        {/*{renderAvatarSwitcher()}*/}
+                        <div className="al-avatar-ring">
+                            {isListening && <>
+                                <div className="al-pulse-ring r1"/>
+                                <div className="al-pulse-ring r2"/>
+                            </>}
+                            <div className={`al-avatar-circle${isListening?' speaking':''}`}>
+                                {renderAvatar(100)}
+                                <AnimatePresence>
+                                    {(isRecording || isListening) && (
+                                        <motion.div className="al-rec-badge"
+                                                    initial={{opacity:0,y:4}} animate={{opacity:1,y:0}} exit={{opacity:0,y:4}}
+                                                    transition={{duration:.2}}
+                                        >
+                                            <div className="al-rec-dot"/>
+                                            {isRecording ? 'Recording' : 'Speaking'}
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </div>
                         </div>
-                        <div className="lx-progress" style={{borderRadius:4}}>
-                            <div className="lx-progress-fill" style={{width:`${progressPct}%`}}/>
-                        </div>
-                        <div className="lx-divider" style={{margin:'14px 0'}}/>
-                        <div className="lx-desk-timer">{formatTime(elapsedTime)}</div>
-                        <div className="lx-desk-timer-lbl">Elapsed</div>
+                        <p className="al-avatar-name">{avatarId==='jelly'?'Jelly Friend':'LinguaPals'}</p>
+                        <p className="al-avatar-sub">{avatarSub}</p>
                     </div>
 
-                    <div className="lx-panel">
-                        <div className="lx-panel-title">Settings</div>
-                        {renderSettings()}
-                    </div>
+                    {/* Settings inline */}
+                    {renderSettings(true)}
                 </div>
 
-                {/* Main */}
-                <div style={{display:'flex',flexDirection:'column',gap:14}}>
+                {/* Right panel */}
+                <div className="al-panel-right">
 
-                    <div style={{display:'flex',alignItems:'center',gap:10}}>
-                        <div className={`lx-pill ${pillClass}`}><div className="lx-dot"/>{pillLabel}</div>
+                    {/* Header */}
+                    <div className="al-desk-header">
+                        <div>
+                            <div className="al-desk-title">{conversation.scenario}</div>
+                            <div className="al-desk-meta">
+                                Turn {currentTurnIdx+1} of {conversation.turns.length}
+                                {' · '}{Math.round(progressPct)}% complete
+                            </div>
+                        </div>
+                        <div className="al-desk-timer">
+                            <div className="al-desk-timer-val">{formatTime(elapsedTime)}</div>
+                            <div className="al-desk-timer-lbl">Elapsed</div>
+                        </div>
                     </div>
 
-                    {/* Chat */}
-                    <div className="lx-chat" ref={chatScrollRef}>
-                        {messages.length === 0 && <div className="lx-chat-empty">Conversation will appear here…</div>}
-                        {messages.map(msg => (
-                            <div key={msg.id} className={`lx-bw ${msg.speaker}`}>
-                                <div className="lx-brole">{msg.role}</div>
-                                <div className={`lx-bubble ${msg.speaker}`}>
-                                    {msg.speaker==='ai'
-                                        ? getTurnText(conversation.turns[msg.turnOrder], language)||msg.content
-                                        : msg.content}
+                    {/* Progress bar */}
+                    <div className="al-progress-bar">
+                        <div className="al-progress-fill" style={{width:`${progressPct}%`}}/>
+                    </div>
+
+                    {/* Chat transcript */}
+                    <div className="al-chat-scroll" ref={chatScrollRef}>
+                        {messages.length === 0 && (
+                            <div style={{ textAlign:'center', color:'var(--text-muted)', fontSize:13, padding:'20px 0' }}>
+                                Conversation will appear here…
+                            </div>
+                        )}
+                        <AnimatePresence>
+                            {messages.map(msg => (
+                                <motion.div key={msg.id}
+                                            className={`al-bubble ${msg.speaker}`}
+                                            initial={{opacity:0, y:8, scale:.97}}
+                                            animate={{opacity:1, y:0, scale:1}}
+                                            transition={{duration:.22}}
+                                >
+                                    <div className="al-bubble-role">{msg.role}</div>
+                                    <div>
+                                        {msg.speaker==='ai'
+                                            ? getTurnText(conversation.turns[msg.turnOrder], language)||msg.content
+                                            : msg.content}
+                                    </div>
                                     {msg.speaker==='ai' && getRomanization(conversation.turns[msg.turnOrder], language) && (
-                                        <div className="lx-brom">{getRomanization(conversation.turns[msg.turnOrder], language)}</div>
+                                        <div className="al-bubble-rom">{getRomanization(conversation.turns[msg.turnOrder], language)}</div>
                                     )}
                                     {msg.speaker==='ai' && showEN && conversation.turns[msg.turnOrder]?.text && (
-                                        <div className="lx-ben">EN: {conversation.turns[msg.turnOrder].text}</div>
+                                        <div className="al-bubble-en">🇬🇧 {conversation.turns[msg.turnOrder].text}</div>
                                     )}
-                                </div>
-                                {msg.audioUrl && <audio controls style={{width:'100%',height:28,marginTop:4}} src={msg.audioUrl}/>}
-                            </div>
-                        ))}
+                                    {msg.audioUrl && <audio controls style={{width:'100%',height:28,marginTop:6}} src={msg.audioUrl}/>}
+                                </motion.div>
+                            ))}
+                        </AnimatePresence>
                     </div>
 
-                    {/* Controls */}
-                    <div className="lx-ctrl">
-                        {lastAiMsg && (
-                            <div className="lx-prompt-card" style={{borderRadius:'var(--r-md)'}}>
-                                <div className="lx-prompt-label">
-                                    <Volume2 size={10}/>
-                                    {lastAiMsg.role.charAt(0).toUpperCase() + lastAiMsg.role.slice(1)}
+                    {/* Voice controls area */}
+                    <div className="al-desk-controls">
+
+                        {/* AI speaking state */}
+                        {showSpeaking && (
+                            <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:12, width:'100%'}}>
+                                <div className="al-desk-wave">
+                                    {[28,20,36,16,40,18,32,22].map((h,i)=>(
+                                        <div key={i} className="al-desk-wave-bar" style={{ height:`${h}px`, '--dur':`${.3+i*.06}s`, '--delay':`${i*.04}s` } as React.CSSProperties}/>
+                                    ))}
                                 </div>
-                                <div className="lx-prompt-text">
-                                    {getTurnText(conversation.turns[lastAiMsg.turnOrder], language)||lastAiMsg.content}
-                                </div>
+                                <div className="al-desk-status">Listening to {currentTurn?.role || 'assistant'}…</div>
                             </div>
                         )}
 
-                        {(showStart || showStop || showCd) && isUserTurn && currentTurn && (
-                            <div className="lx-say-card" style={{borderRadius:'var(--r-md)'}}>
-                                <div className="lx-say-label">
-                                    <span className="lx-say-badge">↗</span> Your line
-                                </div>
-                                <div className="lx-say-text">"{getTurnText(currentTurn, language)}"</div>
-                                {getRomanization(currentTurn, language) && (
-                                    <div className="lx-say-rom">{getRomanization(currentTurn, language)}</div>
-                                )}
-                                {showEN && currentTurn.text && (
-                                    <div className="lx-say-en">🇬🇧 {currentTurn.text}</div>
-                                )}
+                        {/* Processing */}
+                        {showProc && (
+                            <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:10}}>
+                                <div className="al-dots"><span/><span/><span/></div>
+                                <div className="al-desk-status">Processing your response…</div>
                             </div>
                         )}
 
-                        {showStop && (
-                            <div className="lx-timer-wrap">
-                                <div className="lx-timer-bar">
-                                    <div className={`lx-timer-fill${timerUrgent?' urgent':''}`} style={{width:`${timerPct}%`}}/>
-                                </div>
-                                <div className="lx-timer-label">
-                                    <span>Recording</span>
-                                    <span>{recTimeLeft != null && recTimeLeft > 0 ? `${recTimeLeft}s left` : 'Finishing…'}</span>
-                                </div>
-                                {liveTranscript && <div className="lx-live-tx">"{liveTranscript}"</div>}
+                        {/* Countdown */}
+                        {showCd && (
+                            <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:10}}>
+                                <div className="al-countdown-ring" style={{width:56,height:56,fontSize:22}}>{countdownLeft}</div>
+                                <div className="al-desk-status">Recording starts in {countdownLeft}…</div>
                             </div>
                         )}
 
-                        <div style={{display:'flex',alignItems:'center',gap:14}}>
-                            {showStart && (
-                                <button className="lx-desk-rec start" onClick={startRecording}>
-                                    <Mic size={15}/> Start Recording
-                                </button>
-                            )}
-                            {showStop && (
-                                <button className="lx-desk-rec stop" onClick={stopRecording}>
-                                    <Square size={14} fill="var(--red-500)"/> Stop Recording
-                                </button>
-                            )}
-                            {showSpeaking && (
-                                <div style={{display:'flex',alignItems:'center',gap:12}}>
-                                    {renderWave(0.65)}
-                                    <span className="lx-ctrl-status">AI is speaking…</span>
-                                </div>
-                            )}
-                            {showProc && <span className="lx-ctrl-status">Processing your response…</span>}
-                            {showCd   && <span className="lx-ctrl-status">Auto-starting in {countdownLeft}s…</span>}
-                        </div>
+                        {/* User turn — say this + button */}
+                        {(showStart || showStop) && isUserTurn && currentTurn && (
+                            <>
+                                <AnimatePresence mode="wait">
+                                    <motion.div key={currentTurnIdx} className="al-desk-say" style={{width:'100%'}}
+                                                initial={{opacity:0,y:6}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-4}}
+                                                transition={{duration:.22}}
+                                    >
+                                        <div style={{fontSize:10,fontWeight:800,letterSpacing:'0.12em',textTransform:'uppercase',color:'var(--brand)',marginBottom:8}}>Say this:</div>
+                                        <div className="al-desk-say-text">"{getTurnText(currentTurn, language)}"</div>
+                                        {getRomanization(currentTurn, language) && (
+                                            <div className="al-desk-say-rom">{getRomanization(currentTurn, language)}</div>
+                                        )}
+                                        {showEN && currentTurn.text && (
+                                            <div className="al-desk-say-en">🇬🇧 {currentTurn.text}</div>
+                                        )}
+                                    </motion.div>
+                                </AnimatePresence>
+
+                                <AnimatePresence mode="wait">
+                                    {showStart && (
+                                        <motion.button key="start" className="al-desk-btn start" onClick={startRecording}
+                                                       initial={{scale:.9,opacity:0}} animate={{scale:1,opacity:1}} exit={{scale:.9,opacity:0}}
+                                                       transition={{type:'spring',stiffness:340,damping:22}}>
+                                            <Mic size={18}/> Start Recording
+                                        </motion.button>
+                                    )}
+                                    {showStop && (
+                                        <div className="al-desk-rec-row">
+                                            <div className="al-desk-timer-bar">
+                                                <div className={`al-desk-timer-fill${timerUrgent?' urgent':''}`} style={{width:`${timerPct}%`}}/>
+                                            </div>
+                                            <div style={{fontSize:12,color:'var(--text-sub)',fontWeight:600}}>
+                                                {recTimeLeft != null && recTimeLeft > 0 ? `${recTimeLeft}s remaining` : 'Finishing…'}
+                                            </div>
+                                            {liveTranscript && (
+                                                <div className="al-desk-transcript">{liveTranscript}</div>
+                                            )}
+                                            <motion.button key="stop" className="al-desk-btn stop" onClick={stopRecording}
+                                                           initial={{scale:.9,opacity:0}} animate={{scale:1,opacity:1}} exit={{scale:.9,opacity:0}}
+                                                           transition={{type:'spring',stiffness:340,damping:22}}>
+                                                <Square size={16} fill="white"/> Stop Recording
+                                            </motion.button>
+                                        </div>
+                                    )}
+                                </AnimatePresence>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>
 
-            {/* Settings Sheet */}
-            {settingsOpen && (
-                <>
-                    <div className="lx-overlay" onClick={()=>setSettingsOpen(false)}/>
-                    <div className="lx-sheet">
-                        <div className="lx-sheet-handle"/>
-                        <div className="lx-sheet-title">Settings</div>
-                        {renderSettings()}
-                        <button className="lx-sheet-done" onClick={()=>setSettingsOpen(false)}>Done</button>
-                    </div>
-                </>
-            )}
+            {/* ── Settings sheet (mobile) ── */}
+            <AnimatePresence>
+                {settingsOpen && (
+                    <>
+                        {/* Overlay */}
+                        <motion.div
+                            className="fixed inset-0 bg-black/40 z-[90]"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setSettingsOpen(false)}
+                        />
+
+                        {/* Bottom Sheet */}
+                        <motion.div
+                            className="fixed bottom-0 left-0 right-0 z-[100] bg-white rounded-t-3xl shadow-xl p-5 max-h-[85vh] overflow-y-auto"
+                            initial={{ y: "100%" }}
+                            animate={{ y: 0 }}
+                            exit={{ y: "100%" }}
+                            transition={{ type: "spring", damping: 28, stiffness: 300 }}
+                        >
+                            {/* Handle */}
+                            <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-4" />
+
+                            {/* Title */}
+                            <div className="text-lg font-semibold text-center mb-4">
+                                Settings
+                            </div>
+
+                            {/* Settings Content */}
+                            {renderSettings(false)}
+
+                            {/* Done Button */}
+                            <button
+                                className="w-full mt-6 py-3 rounded-xl bg-blue-500 text-white font-semibold"
+                                onClick={() => setSettingsOpen(false)}
+                            >
+                                Done
+                            </button>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
         </div>
     )
 }

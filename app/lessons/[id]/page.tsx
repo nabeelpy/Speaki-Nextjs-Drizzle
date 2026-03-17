@@ -167,32 +167,32 @@ export default function LessonPage({
             <div className="layout-container flex h-full grow flex-col">
                 <Header />
                 <main className="flex flex-col items-center w-full max-w-[1200px] mx-auto px-4 lg:px-10 py-10 pb-24 md:pb-10">
-                    <Link
-                        href="/"
-                        className="flex items-center gap-2 text-[#137fec] hover:opacity-80 transition-opacity mb-8 self-start"
-                    >
-                        <svg
-                            className="w-5 h-5"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                        >
-                            <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M15 19l-7-7 7-7"
-                            />
-                        </svg>
-                        Back to Courses
-                    </Link>
+                    {/*<Link*/}
+                    {/*    href="/"*/}
+                    {/*    className="flex items-center gap-2 text-[#137fec] hover:opacity-80 transition-opacity mb-8 self-start"*/}
+                    {/*>*/}
+                    {/*    <svg*/}
+                    {/*        className="w-5 h-5"*/}
+                    {/*        fill="none"*/}
+                    {/*        stroke="currentColor"*/}
+                    {/*        viewBox="0 0 24 24"*/}
+                    {/*    >*/}
+                    {/*        <path*/}
+                    {/*            strokeLinecap="round"*/}
+                    {/*            strokeLinejoin="round"*/}
+                    {/*            strokeWidth={2}*/}
+                    {/*            d="M15 19l-7-7 7-7"*/}
+                    {/*        />*/}
+                    {/*    </svg>*/}
+                    {/*    Back to Courses*/}
+                    {/*</Link>*/}
 
                     {!hasStarted && (
                         <div className="text-center max-w-3xl w-full">
-                            <h1 className="text-4xl font-bold text-[#0d141b] dark:text-white mb-4">
+                            <h1 className="text-2xl md:text-4xl font-bold text-[#0d141b] dark:text-white mb-4">
                                 {conversation.title}
                             </h1>
-                            <p className="text-[#4c739a] dark:text-slate-400 mb-8 text-lg">
+                            <p className="text-[#4c739a] dark:text-slate-400 mb-8 text-base md:text-lg">
                                 {conversation.description}
                             </p>
 
@@ -205,15 +205,15 @@ export default function LessonPage({
                                 </p>
                             </div> */}
 
-                            <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg p-6 mb-8">
+                            <div className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg p-4 md:p-6 mb-8">
                                 <h3 className="text-left font-bold text-[#0d141b] dark:text-white mb-4">
                                     Language, voice &amp; delay
                                 </h3>
                                 <p className="text-left text-sm text-[#4c739a] dark:text-slate-400 mb-4">
                                     Choose the language, AI voice accent, and automatic delay before recording.
                                 </p>
-                                <div className="flex flex-wrap items-end gap-4">
-                                    <div className="flex flex-col gap-1.5 min-w-[180px]">
+                                <div className="flex flex-col gap-4 md:flex-row md:flex-wrap md:items-end">
+                                    <div className="flex flex-col gap-1.5 w-full md:w-auto md:min-w-[180px]">
                                         <Label className="text-left text-xs font-semibold text-[#4c739a] dark:text-slate-400">
                                             Accent
                                         </Label>
@@ -231,7 +231,7 @@ export default function LessonPage({
                                                 ))}
                                             </SelectContent>
                                         </Select>                                    </div>
-                                    <div className="flex flex-col gap-1.5 min-w-[200px]">
+                                    <div className="flex flex-col gap-1.5 w-full md:w-auto md:min-w-[200px]">
                                         <Label className="text-left text-xs font-semibold text-[#4c739a] dark:text-slate-400">
                                             Agent
                                         </Label>
@@ -252,7 +252,7 @@ export default function LessonPage({
                                             </SelectContent>
                                         </Select>
                                     </div>
-                                    <div className="flex flex-col gap-1.5 min-w-[200px]">
+                                    <div className="flex flex-col gap-1.5 w-full md:w-auto md:min-w-[200px]">
                                         <Label className="text-left text-xs font-semibold text-[#4c739a] dark:text-slate-400">
                                             Delay Before Recording
                                         </Label>
@@ -273,29 +273,29 @@ export default function LessonPage({
                             </div>
 
 
-                            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6 mb-8 text-left">
-                                <p className="text-[#0d141b] dark:text-white font-semibold mb-4">
-                                    Conversation Practice:
-                                </p>
-                                <ul className="space-y-2 text-sm text-[#4c739a] dark:text-slate-400">
-                                    <li className="flex items-start gap-2">
-                                        <span className="text-[#137fec] font-bold mt-0.5">1.</span>
-                                        <span>Listen to the AI speak their line in the conversation</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <span className="text-[#137fec] font-bold mt-0.5">2.</span>
-                                        <span>Then speak your line</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <span className="text-[#137fec] font-bold mt-0.5">3.</span>
-                                        <span>Continue through the entire conversation</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <span className="text-[#137fec] font-bold mt-0.5">4.</span>
-                                        <span>Review and listen to the complete conversation at the end</span>
-                                    </li>
-                                </ul>
-                            </div>
+                            {/*<div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6 mb-8 text-left">*/}
+                            {/*    <p className="text-[#0d141b] dark:text-white font-semibold mb-4">*/}
+                            {/*        Conversation Practice:*/}
+                            {/*    </p>*/}
+                            {/*    <ul className="space-y-2 text-sm text-[#4c739a] dark:text-slate-400">*/}
+                            {/*        <li className="flex items-start gap-2">*/}
+                            {/*            <span className="text-[#137fec] font-bold mt-0.5">1.</span>*/}
+                            {/*            <span>Listen to the AI speak their line in the conversation</span>*/}
+                            {/*        </li>*/}
+                            {/*        <li className="flex items-start gap-2">*/}
+                            {/*            <span className="text-[#137fec] font-bold mt-0.5">2.</span>*/}
+                            {/*            <span>Then speak your line</span>*/}
+                            {/*        </li>*/}
+                            {/*        <li className="flex items-start gap-2">*/}
+                            {/*            <span className="text-[#137fec] font-bold mt-0.5">3.</span>*/}
+                            {/*            <span>Continue through the entire conversation</span>*/}
+                            {/*        </li>*/}
+                            {/*        <li className="flex items-start gap-2">*/}
+                            {/*            <span className="text-[#137fec] font-bold mt-0.5">4.</span>*/}
+                            {/*            <span>Review and listen to the complete conversation at the end</span>*/}
+                            {/*        </li>*/}
+                            {/*    </ul>*/}
+                            {/*</div>*/}
 
 
 
@@ -303,7 +303,7 @@ export default function LessonPage({
 
                             <button
                                 onClick={() => setHasStarted(true)}
-                                className="bg-[#137fec] hover:bg-[#137fec]/90 text-white font-bold py-4 px-12 rounded-lg text-lg shadow-lg shadow-[#137fec]/20 transition-all"
+                                className="w-full md:w-auto bg-[#137fec] hover:bg-[#137fec]/90 text-white font-bold py-3 px-4 md:py-4 md:px-12 rounded-lg text-base md:text-lg shadow-lg shadow-[#137fec]/20 transition-all"
                             >
                                 Start Conversation Practice
                             </button>

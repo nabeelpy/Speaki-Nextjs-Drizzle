@@ -42,32 +42,31 @@ export default function CoursePage({
         <div className="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
             <div className="layout-container flex h-full grow flex-col">
                 <Header/>
-                <main className="flex flex-col w-full max-w-[1200px] mx-auto px-4 lg:px-10 py-10 pb-24 md:pb-10">
-                    {/* Back Link */}
-                    <div className="flex items-center gap-4 mb-8">
-                        <Link
-                            href="/"
-                            className="flex items-center gap-2 text-[#137fec] hover:opacity-80 transition-opacity"
-                        >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/>
-                            </svg>
-                            Back to Courses
-                        </Link>
-                    </div>
+                <main className="flex flex-col w-full max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-12 py-6 md:py-12 pb-24 md:pb-12">                    {/* Back Link */}
+                    {/*<div className="flex items-center gap-4 mb-8">*/}
+                    {/*    <Link*/}
+                    {/*        href="/"*/}
+                    {/*        className="flex items-center gap-2 text-[#137fec] hover:opacity-80 transition-opacity"*/}
+                    {/*    >*/}
+                    {/*        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">*/}
+                    {/*            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/>*/}
+                    {/*        </svg>*/}
+                    {/*        Back to Courses*/}
+                    {/*    </Link>*/}
+                    {/*</div>*/}
 
                     {/* Course Header */}
-                    <div className="bg-gradient-to-r from-[#137fec]/20 to-[#137fec]/5 rounded-2xl p-6 sm:p-8 mb-8">
-                        {/* Mobile: stack vertically / Desktop: side by side */}
-                        <div className="flex flex-col sm:flex-row gap-6">
+                    <div className="bg-gradient-to-r from-[#137fec]/20 to-[#137fec]/5 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-6 sm:mb-8">
+                        <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
+
                             {/* Thumbnail */}
                             <div className="
-  w-full sm:w-40 md:w-48
-  aspect-video sm:aspect-square
-  flex-shrink-0
-  rounded-xl overflow-hidden
-  bg-slate-100
-">
+      w-full sm:w-40 md:w-48
+      aspect-[16/9] sm:aspect-square
+      rounded-lg sm:rounded-xl overflow-hidden
+      bg-slate-100
+      flex-shrink-0
+    ">
                                 <img
                                     src={course.thumbnail}
                                     alt={course.title}
@@ -76,24 +75,47 @@ export default function CoursePage({
                             </div>
 
                             {/* Info */}
-                            <div className="flex-1 flex flex-col justify-center gap-3">
-                <span
-                    className="inline-block self-start bg-[#137fec] text-white px-4 py-1 rounded-full text-sm font-bold tracking-wide">
-                  {course.level}
-                </span>
-                                <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-[#0d141b] leading-tight">
+                            <div className="flex-1 flex flex-col justify-center gap-2 sm:gap-3">
+
+                                {/* Level badge */}
+                                <span className="
+        inline-block self-start
+        bg-[#137fec] text-white
+        px-3 py-1 sm:px-4
+        text-xs sm:text-sm
+        rounded-full font-semibold
+      ">
+        {course.level}
+      </span>
+
+                                {/* Title */}
+                                <h1 className="
+        text-lg sm:text-2xl md:text-3xl lg:text-4xl
+        font-bold sm:font-extrabold
+        text-[#0d141b]
+        leading-snug
+      ">
                                     {course.title}
                                 </h1>
-                                <p className="text-base sm:text-lg text-[#137fec] font-semibold">
+
+                                {/* Category */}
+                                <p className="text-sm sm:text-base text-[#137fec] font-semibold">
                                     {course.category}
                                 </p>
-                                <p className="text-sm sm:text-base text-[#4c739a] leading-relaxed">
+
+                                {/* Description */}
+                                <p className="
+        text-xs sm:text-sm md:text-base
+        text-[#4c739a]
+        leading-snug sm:leading-relaxed
+        line-clamp-3 sm:line-clamp-none
+      ">
                                     {course.description}
                                 </p>
+
                             </div>
                         </div>
                     </div>
-
                     {/* Lessons Section */}
                     <div className="mb-8">
                         <h2 className="text-2xl font-bold text-[#0d141b] mb-6">Course Content</h2>
@@ -109,9 +131,13 @@ export default function CoursePage({
                       {index + 1}
                     </span>
                                         <div>
-                                            <h3 className="font-bold text-[#0d141b] dark:text-white
-text-sm sm:text-base md:text-lg lg:text-xl
-leading-snug break-words">
+                                            <h3 className="
+  font-medium sm:font-semibold
+  text-[13px] sm:text-sm md:text-base lg:text-lg
+  leading-tight
+  break-words
+  line-clamp-2
+">
                                                 {lesson.title}
                                             </h3>
                                             <p className="text-sm text-[#4c739a]">{lesson.duration} minutes</p>

@@ -11,8 +11,8 @@ export default function MobileNav() {
 
   const tabs = [
     { id: 'home', label: 'Courses', href: '/', icon: 'home' },
-    { id: 'languages', label: 'Languages', href: '/languages', icon: 'bolt' },
-    { id: 'debate', label: 'Debates', href: '/debates', icon: 'chat' },
+    { id: 'about', label: 'About us', href: '/about', icon: 'bolt' },
+    { id: 'tools', label: 'Tools', href: '/tools', icon: 'chat' },
   ]
 
   return (
