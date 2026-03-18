@@ -78,10 +78,10 @@ export default function LessonPage({
     const getLanguages = () => {
         const codes = Array.from(new Set(voices.map(v => v.lang)))
 
-        // If English → show all except excluded
-        if (!savedLanguage || savedLanguage === 'en') {
-            return codes.filter(code => !excludedLanguages.includes(code))
-        }
+        // // If English → show all except excluded
+        // if (!savedLanguage || savedLanguage === 'en') {
+        //     return codes.filter(code => !excludedLanguages.includes(code))
+        // }
 
         // If another language → show only that one
         return codes.filter(code => code.startsWith(savedLanguage))

@@ -36,6 +36,7 @@ export const LANGUAGE_LABELS: Record<string, string> = {
   "en-NZ": "New Zealand",
   "en-IE": "Ireland",
   "en-ZA": "South Africa",
+  "en-NG": "Nigeria",
 
   "fr-FR": "France",
   "fr-CA": "Canada (French)",
