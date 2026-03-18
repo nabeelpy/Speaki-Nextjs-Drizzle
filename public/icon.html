@@ -1,0 +1,60 @@
+interface BuddyIconProps {
+className?: string;
+size?: number;
+}
+
+export function BuddyIcon({ className = "", size = 24 }: BuddyIconProps) {
+return (
+<svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className={className}
+>
+    {/* Flower crown */}
+    <g stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        {/* Left flower */}
+        <circle cx="7" cy="4.5" r="1" fill="none" />
+        <circle cx="6.3" cy="4.5" r="0.4" fill="none" />
+        <circle cx="7.7" cy="4.5" r="0.4" fill="none" />
+        <circle cx="7" cy="3.8" r="0.4" fill="none" />
+        <circle cx="7" cy="5.2" r="0.4" fill="none" />
+
+        {/* Center flower */}
+        <circle cx="12" cy="3.5" r="1" fill="none" />
+        <circle cx="11.3" cy="3.5" r="0.4" fill="none" />
+        <circle cx="12.7" cy="3.5" r="0.4" fill="none" />
+        <circle cx="12" cy="2.8" r="0.4" fill="none" />
+        <circle cx="12" cy="4.2" r="0.4" fill="none" />
+
+        {/* Right flower */}
+        <circle cx="17" cy="4.5" r="1" fill="none" />
+        <circle cx="16.3" cy="4.5" r="0.4" fill="none" />
+        <circle cx="17.7" cy="4.5" r="0.4" fill="none" />
+        <circle cx="17" cy="3.8" r="0.4" fill="none" />
+        <circle cx="17" cy="5.2" r="0.4" fill="none" />
+
+        {/* Face outline - circular */}
+        <circle cx="12" cy="13" r="6" fill="none" />
+
+        {/* Left wavy hair */}
+        <path d="M 7.5 10 Q 5 10 4 12 Q 3.5 13 4 14" fill="none" />
+        <path d="M 4 14 Q 4.5 15 5 16" fill="none" />
+
+        {/* Right wavy hair */}
+        <path d="M 16.5 10 Q 19 10 20 12 Q 20.5 13 20 14" fill="none" />
+        <path d="M 20 14 Q 19.5 15 19 16" fill="none" />
+
+        {/* Chin/face bottom */}
+        <path d="M 9 17.5 Q 12 19.5 15 17.5" fill="none" />
+
+        {/* Shoulders */}
+        <path d="M 6 19 Q 5 21 4 22" fill="none" />
+        <path d="M 18 19 Q 19 21 20 22" fill="none" />
+        <path d="M 6 19 Q 8 20 12 20 Q 16 20 18 19" fill="none" />
+    </g>
+</svg>
+);
+}

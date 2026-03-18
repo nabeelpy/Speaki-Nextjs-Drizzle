@@ -42,7 +42,7 @@ export default function LessonPage({
     const [selectedVoiceAgentId, setSelectedVoiceAgentId] = useState<string>(
         () => getDefaultVoiceAgentForLang(DEFAULT_LANG)?.id ?? VOICE_AGENTS[0]?.id ?? ''
     )
-    const [recordDelaySeconds, setRecordDelaySeconds] = useState<number>(1)
+    const [recordingMode, setRecordingMode] = useState<'automatic' | 'manual'>('automatic')
     const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
 
     const STORAGE_KEY = 'selected-language-code'
@@ -252,20 +252,18 @@ export default function LessonPage({
                                             </SelectContent>
                                         </Select>
                                     </div>
+                                    {/*// Replace the delay Select div with:*/}
                                     <div className="flex flex-col gap-1.5 w-full md:w-auto md:min-w-[200px]">
                                         <Label className="text-left text-xs font-semibold text-[#4c739a] dark:text-slate-400">
-                                            Delay Before Recording
+                                            Recording Mode
                                         </Label>
-                                        <Select value={String(recordDelaySeconds)} onValueChange={(v) => setRecordDelaySeconds(Number(v))}>
+                                        <Select value={recordingMode} onValueChange={(v) => setRecordingMode(v as 'automatic' | 'manual')}>
                                             <SelectTrigger className="w-full">
-                                                <SelectValue placeholder="Select delay" />
+                                                <SelectValue placeholder="Select mode" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {[0, 1, 2, 3, 4].map((d) => (
-                                                    <SelectItem key={d} value={String(d)}>
-                                                        {d} seconds
-                                                    </SelectItem>
-                                                ))}
+                                                <SelectItem value="automatic">Automatic</SelectItem>
+                                                <SelectItem value="manual">Manual</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -316,8 +314,7 @@ export default function LessonPage({
                             onComplete={handleLessonComplete}
                             defaultLanguage={selectedLanguage}
                             defaultVoiceAgentId={selectedVoiceAgentId}
-                            recordDelaySeconds={recordDelaySeconds}
-                        />
+                            recordingMode={recordingMode}                        />
                     )}
                 </main>
                 {/*<MobileNav />*/}
