@@ -1108,6 +1108,20 @@ export default function AudioLessonInterface({
         voiceRef.current = browserVoices.find(v => `${v.name}|${v.lang}` === voiceAgentId) || null
     }, [voiceAgentId, browserVoices])
 
+    // Cleanup on unmount — stop TTS and all timers
+    useEffect(() => {
+        return () => {
+            ttsRef.current.stop()
+            if (timerRef.current) clearInterval(timerRef.current)
+            if (cdRef.current) clearInterval(cdRef.current)
+            if (recTRef.current) clearInterval(recTRef.current)
+            endedRef.current = true
+            isListRef.current = false
+            isRecRef.current = false
+            isProcRef.current = false
+        }
+    }, [])
+
     // Timer (UNCHANGED)
     useEffect(() => {
         timerRef.current = setInterval(() => setElapsedTime(p => p+1), 1000)
