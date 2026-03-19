@@ -18,7 +18,7 @@ import {
     SelectValue,
 } from '@/components/ui/select'
 import { Settings, X, ChevronLeft, Mic, Square, Play, StopCircle } from 'lucide-react'
-
+import Image from 'next/image';
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface AudioLessonInterfaceProps {
     conversation: LessonConversation
@@ -1567,11 +1567,16 @@ export default function AudioLessonInterface({
                             {/* Compact inline avatar */}
                             <div className={`al-mini-avatar${isListening ? ' speaking' : ''}`}>
                                 <div className="al-mini-avatar-shine"/>
-                                <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-                                    <path d="M11 2C7.69 2 5 4.69 5 8C5 10.3 6.3 12.3 8.2 13.3L7.5 18H14.5L13.8 13.3C15.7 12.3 17 10.3 17 8C17 4.69 14.31 2 11 2Z" fill="white" opacity="0.92"/>
-                                    <circle cx="8.8" cy="8.2" r="1.1" fill="rgba(67,97,216,0.65)"/>
-                                    <circle cx="13.2" cy="8.2" r="1.1" fill="rgba(67,97,216,0.65)"/>
-                                    <path d="M8.8 11Q11 12.5 13.2 11" stroke="rgba(67,97,216,0.55)" strokeWidth="1.1" strokeLinecap="round" fill="none"/>
+                                <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <rect x="1" y="4" width="20" height="10" rx="5" fill="currentColor"/>
+                                    <circle cx="7.5" cy="9" r="3" fill="white"/>
+                                    <rect x="6" y="7.5" width="3" height="3" rx="0.7" fill="currentColor"/>
+                                    <circle cx="14.5" cy="9" r="3" fill="white"/>
+                                    <rect x="13" y="7.5" width="3" height="3" rx="0.7" fill="currentColor"/>
+                                    <circle cx="7" cy="17" r="0.8" fill="currentColor"/>
+                                    <circle cx="9.7" cy="17" r="0.8" fill="currentColor"/>
+                                    <circle cx="12.3" cy="17" r="0.8" fill="currentColor"/>
+                                    <circle cx="15" cy="17" r="0.8" fill="currentColor"/>
                                 </svg>
                             </div>
 

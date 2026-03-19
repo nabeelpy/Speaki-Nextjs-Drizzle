@@ -1,0 +1,219 @@
+
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL
+});
+
+// =========================
+// HELPERS
+// =========================
+
+function random(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function getAggressionLevel(diff) {
+  if (diff >= 40) return "dominating";
+  if (diff >= 10) return "confident";
+  if (diff >= -10) return "neutral";
+  if (diff >= -40) return "pressured";
+  return "desperate";
+}
+
+const OPENERS = {
+  dominating: ["This is getting too easy.", "You're completely outmatched."],
+  confident: ["You're missing the bigger picture.", "That argument doesn't hold."],
+  neutral: ["That's not entirely accurate."],
+  pressured: ["That was decent—but flawed."],
+  desperate: ["Fine, that was strong… but"]
+};
+
+const CLOSERS = {
+  dominating: ["This debate is basically over."],
+  confident: ["Your argument just collapsed."],
+  neutral: ["That weakens your position."],
+  pressured: ["Still not enough."],
+  desperate: ["I'm still in this."]
+};
+
+const TRASH = [
+  "You're running out of arguments.",
+  "This is one-sided.",
+  "You're not adapting."
+];
+
+// =========================
+// MAIN API
+// =========================
+
+export async function POST(req) {
+  const { sessionId, text } = await req.json();
+  const client = await pool.connect();
+
+  try {
+    // 1. Get session
+    const { rows: sessionRows } = await client.query(
+      `SELECT * FROM debate_sessions WHERE id = $1`,
+      [sessionId]
+    );
+
+    const session = sessionRows[0];
+    const input = text.toLowerCase();
+
+    // 2. Get keywords
+    const { rows: keywords } = await client.query(`
+      SELECT a.id, a.text, a.side, a.strength, k.keyword, k.weight
+      FROM arguments a
+      JOIN argument_keywords k ON a.id = k.argument_id
+      WHERE a.topic_id = $1 AND a.side = $2
+    `, [session.topic_id, session.user_side]);
+
+    // 3. Score user input
+    let scores = {};
+
+    keywords.forEach(row => {
+      if (input.includes(row.keyword)) {
+        if (!scores[row.id]) {
+          scores[row.id] = {
+            score: 0,
+            text: row.text,
+            strength: row.strength
+          };
+        }
+        scores[row.id].score += row.weight;
+      }
+    });
+
+    let bestEntry = Object.entries(scores).sort((a, b) => b[1].score - a[1].score)[0];
+
+    let userScoreGain = 0;
+    let userArgId = null;
+
+    if (bestEntry) {
+      userArgId = bestEntry[0];
+      userScoreGain = bestEntry[1].strength * 10;
+    }
+
+    // 4. Prevent repeat
+    const { rows: used } = await client.query(
+      `SELECT * FROM session_arguments WHERE session_id=$1 AND argument_id=$2`,
+      [sessionId, userArgId]
+    );
+
+    if (used.length) {
+      userScoreGain = -10;
+    }
+
+    // 5. Update session score
+    await client.query(
+      `UPDATE debate_sessions SET user_score = user_score + $1 WHERE id=$2`,
+      [userScoreGain, sessionId]
+    );
+
+    // Save user argument
+    if (userArgId) {
+      await client.query(
+        `INSERT INTO session_arguments VALUES ($1,$2,$3,'user')`,
+        [uuidv4(), sessionId, userArgId]
+      );
+    }
+
+    // 6. AI picks counter
+    const { rows: counterRows } = await client.query(`
+      SELECT a.id, a.text, a.strength
+      FROM argument_relations r
+      JOIN arguments a ON r.target_id = a.id
+      WHERE r.source_id = $1
+      LIMIT 1
+    `, [userArgId]);
+
+    const counter = counterRows[0];
+
+    // Save AI move
+    if (counter) {
+      await client.query(
+        `INSERT INTO session_arguments VALUES ($1,$2,$3,'ai')`,
+        [uuidv4(), sessionId, counter.id]
+      );
+    }
+
+    const aiScoreGain = (counter?.strength || 3) * 10;
+
+    await client.query(
+      `UPDATE debate_sessions SET ai_score = ai_score + $1 WHERE id=$2`,
+      [aiScoreGain, sessionId]
+    );
+
+    // 7. Get updated scores
+    const { rows: updated } = await client.query(
+      `SELECT * FROM debate_sessions WHERE id=$1`,
+      [sessionId]
+    );
+
+    const s = updated[0];
+    const diff = s.ai_score - s.user_score;
+    const level = getAggressionLevel(diff);
+
+    const reply = `${random(OPENERS[level])} ${counter?.text || "That argument fails."}. ${random(CLOSERS[level])}`;
+
+    let trash = null;
+    if (s.round % 2 === 0 || diff > 30) {
+      trash = random(TRASH);
+    }
+
+    // 8. End game check
+    let result = null;
+
+    if (s.round >= 5) {
+      let winner = "draw";
+      if (s.ai_score > s.user_score) winner = "ai";
+      if (s.user_score > s.ai_score) winner = "user";
+
+      await client.query(
+        `UPDATE debate_sessions SET status='finished', winner=$1 WHERE id=$2`,
+        [winner, sessionId]
+      );
+
+      result = winner;
+    }
+
+    // increment round
+    await client.query(
+      `UPDATE debate_sessions SET round = round + 1 WHERE id=$1`,
+      [sessionId]
+    );
+
+    return NextResponse.json({
+      reply,
+      userScore: s.user_score,
+      aiScore: s.ai_score,
+      gained: userScoreGain,
+      trash,
+      result
+    });
+
+  } finally {
+    client.release();
+  }
+}
+🎮 WHAT YOU NOW HAVE
+
+This is a complete game engine:
+
+✅ Features
+
+Side-based debate
+
+Smart argument matching
+
+Counter system
+
+Score system
+
+Anti-repeat penalty
+
+Dynamic aggression
+
+Trash talk 😈
+
+Game ending logic
