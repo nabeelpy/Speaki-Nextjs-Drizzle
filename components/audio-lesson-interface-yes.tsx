@@ -18,7 +18,7 @@ import {
     SelectValue,
 } from '@/components/ui/select'
 import { Settings, X, ChevronLeft, Mic, Square, Play, StopCircle } from 'lucide-react'
-import Image from 'next/image';
+
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface AudioLessonInterfaceProps {
     conversation: LessonConversation
@@ -26,7 +26,7 @@ interface AudioLessonInterfaceProps {
     defaultLanguage?: string
     defaultVoiceAgentId?: string
     delayBeforeRecording?: number
-    recordingMode?: 'automatic' | 'manual'
+    recordDelaySeconds?: number
 }
 
 type AvatarId = 'lingua' | 'jelly'
@@ -42,9 +42,6 @@ const JELLY_BORDER_RADIUS = [
     '30% 60% 70% 40% / 50% 60% 30% 60%',
     '60% 40% 30% 70% / 60% 30% 70% 40%',
 ]
-
-const [recordingMode, setRecordingMode] = useState<'automatic' | 'manual'>('automatic')
-
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 function getTurnText(turn: ConversationTurn | undefined, lang: string): string {
@@ -988,7 +985,6 @@ export default function AudioLessonInterface({
                                                  defaultLanguage = DEFAULT_LANG,
                                                  defaultVoiceAgentId,
                                                  recordDelaySeconds = 4,
-                                                 recordingMode='automatic',
                                              }: AudioLessonInterfaceProps) {
 
     // ── State (ALL UNCHANGED) ──────────────────────────────────────────────────
@@ -1231,18 +1227,12 @@ export default function AudioLessonInterface({
     }
 
     const startCd = (turnIdx: number) => {
-        if (recordingMode === 'manual') {
-            // Manual: just show the mic button, don't auto-start
-            return
-        }
-        cdTurnRef.current = turnIdx
-        setCountdownLeft(3)
-        setCountdownActive(true)
+        cdTurnRef.current = turnIdx; setCountdownLeft(recordDelaySeconds); setCountdownActive(true)
         if (cdRef.current) { clearInterval(cdRef.current); cdRef.current = null }
         cdRef.current = setInterval(() => {
             if (cdTurnRef.current !== idxRef.current || isListRef.current || endedRef.current) { cancelCd(); return }
             setCountdownLeft(prev => {
-                const next = prev - 1
+                const next = prev-1
                 if (next <= 0) {
                     if (cdRef.current) { clearInterval(cdRef.current); cdRef.current = null }
                     setCountdownActive(false)
@@ -1334,7 +1324,6 @@ export default function AudioLessonInterface({
     const renderSettingsDesktop = () => (
         <div className="al-desk-settings">
             <div className="al-desk-settings-title">Settings</div>
-
             <div className="al-field">
                 <span className="al-field-label">Accent</span>
                 <Select value={language} onValueChange={setLanguage}>
@@ -1344,10 +1333,6 @@ export default function AudioLessonInterface({
                     </SelectContent>
                 </Select>
             </div>
-
-
-
-
             <div className="al-field">
                 <span className="al-field-label">Voice</span>
                 <Select value={voiceAgentId} onValueChange={setVoiceAgentId}>
@@ -1359,24 +1344,6 @@ export default function AudioLessonInterface({
                     </SelectContent>
                 </Select>
             </div>
-
-
-            <div className="al-field">
-                <span className="al-field-label">Recording Mode</span>
-                <Select value={recordingMode} onValueChange={(v) => setRecordingMode(v as 'automatic' | 'manual')}>
-                    <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select mode" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="automatic">Automatic</SelectItem>
-                        <SelectItem value="manual">Manual</SelectItem>
-                    </SelectContent>
-                </Select>
-            </div>
-
-
-
-
         </div>
     )
 
@@ -1410,20 +1377,6 @@ export default function AudioLessonInterface({
                         {browserVoices.filter(v=>v.lang.split('-')[0]===language.split('-')[0]).map(v=>(
                             <SelectItem key={`${v.name}|${v.lang}`} value={`${v.name}|${v.lang}`}>{cleanVoiceName(v.name)}</SelectItem>
                         ))}
-                    </SelectContent>
-                </Select>
-            </div>
-
-
-            <div className="al-field">
-                <span className="al-field-label">Recording Mode</span>
-                <Select value={recordingMode} onValueChange={(v) => setRecordingMode(v as 'automatic' | 'manual')}>
-                    <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select mode" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="automatic">Automatic</SelectItem>
-                        <SelectItem value="manual">Manual</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
@@ -1567,16 +1520,11 @@ export default function AudioLessonInterface({
                             {/* Compact inline avatar */}
                             <div className={`al-mini-avatar${isListening ? ' speaking' : ''}`}>
                                 <div className="al-mini-avatar-shine"/>
-                                <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <rect x="1" y="4" width="20" height="10" rx="5" fill="currentColor"/>
-                                    <circle cx="7.5" cy="9" r="3" fill="white"/>
-                                    <rect x="6" y="7.5" width="3" height="3" rx="0.7" fill="currentColor"/>
-                                    <circle cx="14.5" cy="9" r="3" fill="white"/>
-                                    <rect x="13" y="7.5" width="3" height="3" rx="0.7" fill="currentColor"/>
-                                    <circle cx="7" cy="17" r="0.8" fill="currentColor"/>
-                                    <circle cx="9.7" cy="17" r="0.8" fill="currentColor"/>
-                                    <circle cx="12.3" cy="17" r="0.8" fill="currentColor"/>
-                                    <circle cx="15" cy="17" r="0.8" fill="currentColor"/>
+                                <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                                    <path d="M11 2C7.69 2 5 4.69 5 8C5 10.3 6.3 12.3 8.2 13.3L7.5 18H14.5L13.8 13.3C15.7 12.3 17 10.3 17 8C17 4.69 14.31 2 11 2Z" fill="white" opacity="0.92"/>
+                                    <circle cx="8.8" cy="8.2" r="1.1" fill="rgba(67,97,216,0.65)"/>
+                                    <circle cx="13.2" cy="8.2" r="1.1" fill="rgba(67,97,216,0.65)"/>
+                                    <path d="M8.8 11Q11 12.5 13.2 11" stroke="rgba(67,97,216,0.55)" strokeWidth="1.1" strokeLinecap="round" fill="none"/>
                                 </svg>
                             </div>
 

@@ -18,7 +18,7 @@ import {
     SelectValue,
 } from '@/components/ui/select'
 import { Settings, X, ChevronLeft, Mic, Square, Play, StopCircle } from 'lucide-react'
-
+import Image from 'next/image';
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface AudioLessonInterfaceProps {
     conversation: LessonConversation
@@ -26,7 +26,7 @@ interface AudioLessonInterfaceProps {
     defaultLanguage?: string
     defaultVoiceAgentId?: string
     delayBeforeRecording?: number
-    recordDelaySeconds?: number
+    recordingMode?: 'automatic' | 'manual'
 }
 
 type AvatarId = 'lingua' | 'jelly'
@@ -42,6 +42,8 @@ const JELLY_BORDER_RADIUS = [
     '30% 60% 70% 40% / 50% 60% 30% 60%',
     '60% 40% 30% 70% / 60% 30% 70% 40%',
 ]
+
+
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 function getTurnText(turn: ConversationTurn | undefined, lang: string): string {
@@ -985,6 +987,7 @@ export default function AudioLessonInterface({
                                                  defaultLanguage = DEFAULT_LANG,
                                                  defaultVoiceAgentId,
                                                  recordDelaySeconds = 4,
+                                                 recordingMode='automatic',
                                              }: AudioLessonInterfaceProps) {
 
     // ── State (ALL UNCHANGED) ──────────────────────────────────────────────────
@@ -1001,8 +1004,6 @@ export default function AudioLessonInterface({
     const [language,         setLanguage]        = useState(defaultLanguage)
     const [voiceAgentId,     setVoiceAgentId]    = useState(defaultVoiceAgentId ?? '')
     const [browserVoices,    setBrowserVoices]   = useState<SpeechSynthesisVoice[]>([])
-    const [countdownActive,  setCountdownActive] = useState(false)
-    const [countdownLeft,    setCountdownLeft]   = useState(0)
     const [recTimeLeft,      setRecTimeLeft]     = useState<number|null>(null)
     const [userRoleNorm,     setUserRoleNorm]    = useState<string|null>(null)
     const [aiRoleNorm,       setAiRoleNorm]      = useState<string|null>(null)
@@ -1019,15 +1020,13 @@ export default function AudioLessonInterface({
     const vrRef       = useRef(new VoiceRecorder())
     const ttsRef      = useRef(new TextToSpeech())
     const timerRef    = useRef<NodeJS.Timeout|null>(null)
-    const cdRef       = useRef<NodeJS.Timeout|null>(null)
-    const cdTurnRef   = useRef<number|null>(null)
     const recTRef     = useRef<NodeJS.Timeout|null>(null)
     const initialized = useRef(false)
 
     const idxRef        = useRef(0)
     const isRecRef      = useRef(false)
     const isListRef     = useRef(false)
-    const isProcRef     = useRef(false)
+    const isProcRef      = useRef(false)
     const transcriptRef = useRef('')
     const langRef       = useRef(defaultLanguage)
     const uRoleRef      = useRef<string|null>(null)
@@ -1113,7 +1112,6 @@ export default function AudioLessonInterface({
         return () => {
             ttsRef.current.stop()
             if (timerRef.current) clearInterval(timerRef.current)
-            if (cdRef.current) clearInterval(cdRef.current)
             if (recTRef.current) clearInterval(recTRef.current)
             endedRef.current = true
             isListRef.current = false
@@ -1150,29 +1148,22 @@ export default function AudioLessonInterface({
     const progressPct  = ((currentTurnIdx + 1) / conversation.turns.length) * 100
 
     // Control visibility (ALL UNCHANGED)
-    const showStart    = isUserTurn && !isRecording && !isListening && !isProcessing && !countdownActive
+    const showStart    = isUserTurn && !isRecording && !isListening && !isProcessing
     const showStop     = isRecording
-    const showCd       = countdownActive && !isRecording && !isListening && !isProcessing
     const showProc     = isProcessing
     const showSpeaking = isListening
 
     const avatarSub = isListening ? 'Speaking…'
         : isRecording ? 'Listening…'
             : isProcessing ? 'Processing…'
-                : countdownActive ? `Starting in ${countdownLeft}…`
-                    : isUserTurn ? 'Your turn'
-                        : 'Ready'
+                : isUserTurn ? 'Your turn'
+                    : 'Ready'
 
     // ── Core logic (ALL UNCHANGED) ─────────────────────────────────────────────
-    const cancelCd = () => {
-        if (cdRef.current) { clearInterval(cdRef.current); cdRef.current = null }
-        setCountdownActive(false); setCountdownLeft(0)
-    }
-
     const startRecording = async () => {
         if (isRecRef.current) return
         try {
-            cancelCd(); isRecRef.current = true
+            isRecRef.current = true
             setIsRecording(true); isProcRef.current = false; setIsProcessing(false)
             setLiveTranscript(''); transcriptRef.current = ''
             if (recTRef.current) { clearInterval(recTRef.current); recTRef.current = null }
@@ -1226,26 +1217,8 @@ export default function AudioLessonInterface({
         }
     }
 
-    const startCd = (turnIdx: number) => {
-        cdTurnRef.current = turnIdx; setCountdownLeft(recordDelaySeconds); setCountdownActive(true)
-        if (cdRef.current) { clearInterval(cdRef.current); cdRef.current = null }
-        cdRef.current = setInterval(() => {
-            if (cdTurnRef.current !== idxRef.current || isListRef.current || endedRef.current) { cancelCd(); return }
-            setCountdownLeft(prev => {
-                const next = prev-1
-                if (next <= 0) {
-                    if (cdRef.current) { clearInterval(cdRef.current); cdRef.current = null }
-                    setCountdownActive(false)
-                    if (!isRecRef.current && !isListRef.current && !isProcRef.current) startRecording()
-                    return 0
-                }
-                return next
-            })
-        }, 1000)
-    }
-
     const playAI = (message: string, role: string, turnOrder: number) => {
-        cancelCd(); isListRef.current = true; setIsListening(true)
+        isListRef.current = true; setIsListening(true)
         const msg: ConversationMessage = {
             id:`msg-${Date.now()}`, role, content:message,
             speaker:'ai', timestamp:new Date().toISOString(), turnOrder,
@@ -1258,7 +1231,12 @@ export default function AudioLessonInterface({
                 const nextIdx = turnOrder+1
                 const nextTurn = conversation.turns[nextIdx]
                 setCurrentTurnIdx(nextIdx); idxRef.current = nextIdx
-                if (nextTurn && isUserTurnByIdx(nextIdx)) setTimeout(() => startCd(nextIdx), 0)
+                if (nextTurn && isUserTurnByIdx(nextIdx)) {
+                    // Auto-start recording in automatic mode, otherwise wait for manual
+                    if (recordingMode !== 'manual') {
+                        setTimeout(() => startRecording(), 0)
+                    }
+                }
                 else if (nextTurn) setTimeout(() => playAI(getTurnText(nextTurn, getLanguageLabelsimple(langRef.current)), nextTurn.role, nextIdx), 450)
                 else endConv()
             },
@@ -1324,6 +1302,7 @@ export default function AudioLessonInterface({
     const renderSettingsDesktop = () => (
         <div className="al-desk-settings">
             <div className="al-desk-settings-title">Settings</div>
+
             <div className="al-field">
                 <span className="al-field-label">Accent</span>
                 <Select value={language} onValueChange={setLanguage}>
@@ -1333,6 +1312,10 @@ export default function AudioLessonInterface({
                     </SelectContent>
                 </Select>
             </div>
+
+
+
+
             <div className="al-field">
                 <span className="al-field-label">Voice</span>
                 <Select value={voiceAgentId} onValueChange={setVoiceAgentId}>
@@ -1344,8 +1327,28 @@ export default function AudioLessonInterface({
                     </SelectContent>
                 </Select>
             </div>
+
+
+            <div className="al-field">
+                <span className="al-field-label">Recording Mode</span>
+                <Select value={recordingMode} onValueChange={(v) => setRecordingMode(v as 'automatic' | 'manual')}>
+                    <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="automatic">Automatic</SelectItem>
+                        <SelectItem value="manual">Manual</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+
+
+
+
         </div>
     )
+
+    // const [recordingMode, setRecordingMode] = useState<'automatic' | 'manual'>('automatic')
 
     // ── Settings panel — mobile version (full, with avatar picker) ────────────
     const renderSettingsMobile = () => (
@@ -1377,6 +1380,20 @@ export default function AudioLessonInterface({
                         {browserVoices.filter(v=>v.lang.split('-')[0]===language.split('-')[0]).map(v=>(
                             <SelectItem key={`${v.name}|${v.lang}`} value={`${v.name}|${v.lang}`}>{cleanVoiceName(v.name)}</SelectItem>
                         ))}
+                    </SelectContent>
+                </Select>
+            </div>
+
+
+            <div className="al-field">
+                <span className="al-field-label">Recording Mode</span>
+                <Select value={recordingMode} onValueChange={(v) => setRecordingMode(v as 'automatic' | 'manual')}>
+                    <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="automatic">Automatic</SelectItem>
+                        <SelectItem value="manual">Manual</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
@@ -1520,11 +1537,28 @@ export default function AudioLessonInterface({
                             {/* Compact inline avatar */}
                             <div className={`al-mini-avatar${isListening ? ' speaking' : ''}`}>
                                 <div className="al-mini-avatar-shine"/>
-                                <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-                                    <path d="M11 2C7.69 2 5 4.69 5 8C5 10.3 6.3 12.3 8.2 13.3L7.5 18H14.5L13.8 13.3C15.7 12.3 17 10.3 17 8C17 4.69 14.31 2 11 2Z" fill="white" opacity="0.92"/>
-                                    <circle cx="8.8" cy="8.2" r="1.1" fill="rgba(67,97,216,0.65)"/>
-                                    <circle cx="13.2" cy="8.2" r="1.1" fill="rgba(67,97,216,0.65)"/>
-                                    <path d="M8.8 11Q11 12.5 13.2 11" stroke="rgba(67,97,216,0.55)" strokeWidth="1.1" strokeLinecap="round" fill="none"/>
+                                <svg width="35" height="35" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <ellipse cx="11" cy="9" rx="7" ry="7.5" fill="#2C1A0E"/>
+                                    <ellipse cx="11" cy="9.5" rx="5.5" ry="6" fill="#F5C9A0"/>
+                                    <path d="M5.5 7 Q6 1.5 11 1.5 Q16 1.5 16.5 7 Q14 4 11 4 Q8 4 5.5 7Z" fill="#2C1A0E"/>
+                                    <rect x="9" y="15" width="4" height="3" rx="1" fill="#F5C9A0"/>
+                                    <path d="M3 22 Q5 17 9 16 L11 18 L13 16 Q17 17 19 22Z" fill="#1a1a2e"/>
+                                    <path d="M9 16 Q11 19 13 16" stroke="white" strokeWidth="0.6" fill="none" strokeLinecap="round"/>
+                                    <path d="M7.5 7.5 Q9 6.8 10 7.3" stroke="#2C1A0E" strokeWidth="0.7" strokeLinecap="round" fill="none"/>
+                                    <path d="M12 7.3 Q13 6.8 14.5 7.5" stroke="#2C1A0E" strokeWidth="0.7" strokeLinecap="round" fill="none"/>
+                                    <ellipse cx="9" cy="9.5" rx="1.8" ry="1.5" fill="white"/>
+                                    <ellipse cx="13" cy="9.5" rx="1.8" ry="1.5" fill="white"/>
+                                    <circle cx="9" cy="9.5" r="1" fill="#3D2B1F"/>
+                                    <circle cx="13" cy="9.5" r="1" fill="#3D2B1F"/>
+                                    <circle cx="9.3" cy="9.2" r="0.35" fill="white"/>
+                                    <circle cx="13.3" cy="9.2" r="0.35" fill="white"/>
+                                    <rect x="6.8" y="8.1" width="3.6" height="2.8" rx="1" fill="none" stroke="#1a1a2e" strokeWidth="0.55"/>
+                                    <rect x="11.6" y="8.1" width="3.6" height="2.8" rx="1" fill="none" stroke="#1a1a2e" strokeWidth="0.55"/>
+                                    <line x1="10.4" y1="9.5" x2="11.6" y2="9.5" stroke="#1a1a2e" strokeWidth="0.55" strokeLinecap="round"/>
+                                    <line x1="6.8" y1="9.5" x2="6" y2="9.8" stroke="#1a1a2e" strokeWidth="0.55" strokeLinecap="round"/>
+                                    <line x1="15.2" y1="9.5" x2="16" y2="9.8" stroke="#1a1a2e" strokeWidth="0.55" strokeLinecap="round"/>
+                                    <path d="M10.4 11.5 Q11 12.3 11.6 11.5" stroke="#D4956A" strokeWidth="0.5" strokeLinecap="round" fill="none"/>
+                                    <path d="M9.2 13 Q11 14 12.8 13 Q11 14.8 9.2 13Z" fill="#C05070"/>
                                 </svg>
                             </div>
 
@@ -1614,18 +1648,15 @@ export default function AudioLessonInterface({
                         <div className="al-zone-header">
                             <div className="al-zone-label">Your Response</div>
                             <span className={`al-state-pill ${
-                                isRecording ? 'rec' : isProcessing ? 'done' : isListening ? 'done'
-                                    : showCd ? 'speaking' : 'user'
+                                isRecording ? 'rec' : isProcessing ? 'done' : isListening ? 'done' : 'user'
                             }`} style={
                                 isRecording ? { background:'var(--red-soft)', color:'var(--red)' }
                                     : isProcessing ? { background:'rgba(0,0,0,0.04)', color:'var(--text-muted)' }
                                     : isListening ? { background:'rgba(0,0,0,0.04)', color:'var(--text-muted)' }
-                                        : showCd ? { background:'var(--brand-soft)', color:'var(--brand)' }
-                                            : { background:'var(--green-soft)', color:'var(--green)' }
+                                        : { background:'var(--green-soft)', color:'var(--green)' }
                             }>
                                 {isRecording ? 'Recording' : isProcessing ? 'Processing…'
-                                    : isListening ? 'Waiting' : showCd ? `Auto in ${countdownLeft}s`
-                                        : 'Your turn'}
+                                    : isListening ? 'Waiting' : 'Your turn'}
                             </span>
                         </div>
 
@@ -1684,21 +1715,6 @@ export default function AudioLessonInterface({
                                         </div>
                                         <div className="al-proc-dots">
                                             <span/><span/><span/>
-                                        </div>
-                                    </motion.div>
-                                )}
-
-                                {/* Countdown — show mic + countdown badge */}
-                                {showCd && (
-                                    <motion.div key="cd-full" className="al-control-row" style={{width:'100%'}}
-                                                initial={{opacity:0,scale:.95}} animate={{opacity:1,scale:1}} exit={{opacity:0,scale:.95}}
-                                                transition={{type:'spring',stiffness:300,damping:22}}>
-                                        <button className="al-mic-btn" onClick={startRecording}>
-                                            <Mic size={20}/>
-                                        </button>
-                                        <div className="al-idle-side">
-                                            <div className="al-countdown-badge">{countdownLeft}</div>
-                                            <div className="al-idle-text">Auto-recording soon — tap to start now</div>
                                         </div>
                                     </motion.div>
                                 )}
@@ -1827,12 +1843,6 @@ export default function AudioLessonInterface({
                             <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:10}}>
                                 <div className="al-dots"><span/><span/><span/></div>
                                 <div className="al-desk-status">Processing your response…</div>
-                            </div>
-                        )}
-                        {showCd && (
-                            <div style={{display:'flex', flexDirection:'column', alignItems:'center', gap:10}}>
-                                <div className="al-countdown-ring" style={{width:56,height:56,fontSize:22}}>{countdownLeft}</div>
-                                <div className="al-desk-status">Recording starts in {countdownLeft}…</div>
                             </div>
                         )}
                         {(showStart || showStop) && isUserTurn && currentTurn && (
