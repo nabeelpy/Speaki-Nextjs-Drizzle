@@ -9,31 +9,35 @@ import Header from '@/components/header'
 
 // Language config
 const LANGUAGES = [
-  { code: "en", name: "English", flag: "🇬🇧", voiceKeywords: ["english", "en-US", "en-GB", "en-AU", "daniel", "samantha", "karen"] },
-  { code: "fr", name: "French", flag: "🇫🇷", voiceKeywords: ["french", "fr-FR", "fr-CA", "thomas", "amélie", "amelie"] },
-  { code: "es", name: "Spanish", flag: "🇪🇸", voiceKeywords: ["spanish", "es-ES", "es-US", "es-MX", "mónica", "monica", "jorge"] },
-  { code: "ar", name: "Arabic", flag: "🇸🇦", voiceKeywords: ["arabic", "ar-SA", "ar-EG", "maged", "tarik", "lana"] },
-    // ✅ ADD CHINESE
+    { code: "en", name: "English", flag: "🇬🇧", voiceKeywords: ["english", "en-US", "en-GB", "en-AU", "daniel", "samantha", "karen"] },
+    { code: "fr", name: "French", flag: "🇫🇷", voiceKeywords: ["french", "fr-FR", "fr-CA", "thomas", "amélie", "amelie"] },
+    { code: "es", name: "Spanish", flag: "🇪🇸", voiceKeywords: ["spanish", "es-ES", "es-US", "es-MX", "mónica", "monica", "jorge"] },
     {
         code: "zh",
         name: "Chinese",
         flag: "🇨🇳",
-        voiceKeywords: [
-            "chinese",
-            "mandarin",
-            "zh-CN",
-            "zh-TW",
-            "zh-HK",
-            "ting",
-            "mei",
-            "li",
-            "hui",
-            "xiaoxiao",
-            "yunxi"
-        ]
+        voiceKeywords: ["chinese", "mandarin", "zh-CN", "zh-TW", "zh-HK", "ting", "mei", "li", "hui", "xiaoxiao", "yunxi"]
     },
+    {
+        code: "de",
+        name: "German",
+        flag: "🇩🇪",
+        voiceKeywords: ["german", "de-DE", "anna", "jonas", "lena"]
+    },
+    {
+        code: "hi",
+        name: "Hindi",
+        flag: "🇮🇳",
+        voiceKeywords: ["hindi", "hi-IN", "ravi", "ananya", "sneha"]
+    },
+    {
+        code: "ur",
+        name: "Urdu",
+        flag: "🇵🇰",
+        voiceKeywords: ["urdu", "ur-PK", "ur-IN", "zia", "sana", "ahmed"]
+    },
+    { code: "ar", name: "Arabic", flag: "🇸🇦", voiceKeywords: ["arabic", "ar-SA", "ar-EG", "maged", "tarik", "lana"] },
 ];
-
 // Step screenshots as SVG illustrations
 function ScreenshotWindows({ step }) {
   const illustrations = {
