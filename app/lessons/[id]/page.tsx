@@ -45,6 +45,21 @@ export default function LessonPage({
     const [recordingMode, setRecordingMode] = useState<'automatic' | 'manual'>('automatic')
     const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
 
+    // Load from global settings
+    useEffect(() => {
+        const storedLearningLang = localStorage.getItem('selected-language-code')
+        const storedAccent = localStorage.getItem('speaki_accent')
+        const storedRecordingType = localStorage.getItem('speaki_recording_type') as 'automatic' | 'manual' | null
+
+        if (storedAccent) {
+            setSelectedLanguage(storedAccent)
+        } else if (storedLearningLang) {
+            // We'll let the savedLanguage effect handle the 2-letter to BCP-47 conversion
+        }
+        
+        if (storedRecordingType) setRecordingMode(storedRecordingType)
+    }, [])
+
     const STORAGE_KEY = 'selected-language-code'
     const excludedLanguages = ['fr-FR', 'es-ES', 'ar-SA', 'es-US', 'zh-CH', 'zh-CN']
 
@@ -66,11 +81,24 @@ export default function LessonPage({
 // Auto-select first agent voice when voices load or language changes
     useEffect(() => {
         if (voices.length === 0) return
+        
+        // Check for stored preference first
+        const storedAccent = localStorage.getItem('speaki_accent')
+        const storedAgent = localStorage.getItem('speaki_agent')
+        const preferredLang = storedAccent || selectedLanguage
+        
         const filtered = voices.filter(
-            (v) => v.lang.split('-')[0] === selectedLanguage.split('-')[0]
+            (v) => v.lang.split('-')[0] === preferredLang.split('-')[0]
         )
+        
         if (filtered.length > 0) {
-            setSelectedVoiceAgentId(`${filtered[0].name}|${filtered[0].lang}`)
+            // Try to match the exact agent if possible
+            const exactAgentMatch = storedAgent ? filtered.find(v => `${v.name}|${v.lang}` === storedAgent) : null
+            // Otherwise try to match the exact accent if possible
+            const exactAccentMatch = filtered.find(v => v.lang === storedAccent)
+            
+            const chosen = exactAgentMatch || exactAccentMatch || filtered[0]
+            setSelectedVoiceAgentId(`${chosen.name}|${chosen.lang}`)
         }
     }, [voices, selectedLanguage])
 

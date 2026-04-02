@@ -75,6 +75,16 @@ export default function Header() {
           >
             Debates
           </Link>
+          <Link
+            href="/settings"
+            className={`text-sm font-medium leading-normal transition-colors ${
+              isActive('/settings')
+                ? 'text-[#137fec]'
+                : 'text-[#0d141b] dark:text-slate-300 hover:text-[#137fec]'
+            }`}
+          >
+            Settings
+          </Link>
         </nav>
       </div>
       <div className="flex flex-1 justify-end gap-2 md:gap-6 items-center">
