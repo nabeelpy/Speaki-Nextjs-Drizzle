@@ -225,3 +225,23 @@ export const userProgress = pgTable("user_progress", {
 			name: "fk_user_progress_user"
 		}).onDelete("cascade"),
 ]);
+
+export const vocabulary = pgTable("vocabulary", {
+	id: varchar({ length: 255 }).primaryKey().notNull(),
+	lessonId: varchar("lesson_id", { length: 255 }),
+	conversationId: varchar("conversation_id", { length: 255 }),
+	word: varchar({ length: 255 }).notNull(),
+	translations: jsonb(),
+	romanization: jsonb(),
+	definition: text(),
+	definitionByLang: jsonb("definition_by_lang"),
+	exampleSentences: jsonb("example_sentences"),
+	tips: jsonb(),
+	createdAt: timestamp("created_at", { mode: 'string' }).default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+	foreignKey({
+			columns: [table.lessonId],
+			foreignColumns: [lessons.id],
+			name: "fk_vocab_lesson"
+		}).onDelete("cascade"),
+]);

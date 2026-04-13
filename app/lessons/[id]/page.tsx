@@ -299,6 +299,52 @@ export default function LessonPage({
                             </div>
 
 
+                            {conversation.vocabulary && conversation.vocabulary.length > 0 && (
+                                <div className="mb-12 text-left w-full">
+                                    <h2 className="text-xl font-bold text-[#0d141b] dark:text-white mb-6 flex items-center gap-2">
+                                        <svg className="w-6 h-6 text-[#137fec]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5s3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                                        </svg>
+                                        Vocabulary to Learn
+                                    </h2>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {conversation.vocabulary.map((item) => (
+                                            <div key={item.id} className="bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-5 hover:shadow-md transition-shadow">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <h3 className="text-lg font-bold text-[#137fec]">{item.word}</h3>
+                                                    {item.romanization && item.romanization[selectedLanguage] && (
+                                                        <span className="text-xs font-mono text-slate-400">[{item.romanization[selectedLanguage]}]</span>
+                                                    )}
+                                                </div>
+                                                
+                                                <p className="text-sm text-[#0d141b] dark:text-slate-200 mb-2 leading-relaxed">
+                                                    {item.definitionByLang?.[selectedLanguage] || item.definition}
+                                                </p>
+
+                                                {item.translations?.[selectedLanguage] && (
+                                                    <p className="text-xs text-[#4c739a] italic mb-3">
+                                                        Translation: {item.translations[selectedLanguage]}
+                                                    </p>
+                                                )}
+
+                                                {item.exampleSentences && Array.isArray(item.exampleSentences) && item.exampleSentences.length > 0 && (
+                                                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700">
+                                                        <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-2">Example</p>
+                                                        {item.exampleSentences.slice(0, 1).map((ex: any, i: number) => (
+                                                            <div key={i} className="text-xs">
+                                                                <p className="text-slate-600 dark:text-slate-300 leading-relaxed italic">"{ex.text}"</p>
+                                                                {ex.translation && <p className="text-slate-400 mt-1">{ex.translation}</p>}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+
                             {/*<div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-6 mb-8 text-left">*/}
                             {/*    <p className="text-[#0d141b] dark:text-white font-semibold mb-4">*/}
                             {/*        Conversation Practice:*/}

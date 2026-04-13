@@ -71,6 +71,21 @@ export interface LessonConversation {
   recordingDelaySeconds?: number
   recording_time?: number
   turns: ConversationTurn[]
+  vocabulary?: Vocabulary[]
+}
+
+export interface Vocabulary {
+  id: string
+  lessonId?: string
+  conversationId?: string
+  word: string
+  translations?: Record<string, string>
+  romanization?: Record<string, string>
+  definition?: string
+  definitionByLang?: Record<string, string>
+  exampleSentences?: Array<{ text: string, translation?: string }>
+  tips?: Array<string>
+  createdAt?: string
 }
 
 
