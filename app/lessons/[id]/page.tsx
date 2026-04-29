@@ -44,9 +44,9 @@ type VocabularyItem = {
 
 type PracticeItem = {
     id: string
-    nativeText: string       // original language word / sentence
-    translationText: string  // what user will HEAR and must SAY
-    romanization?: string    // romanized form of the translation
+    nativeText: string       // word/phrase in native language (what user already knows)
+    translationText: string  // word/phrase in learning language (what user practices saying)
+    romanization?: string    // romanized form of the learning language word
     isWord: boolean
 }
 
@@ -63,6 +63,22 @@ type RecordingResult = {
 
 const DEFAULT_LANG = 'en-US'
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
+
+// Maps short language codes (from settings localStorage) to full locale codes used in DB
+// Normalize locale (fixes en_GB vs en-GB + casing issues)
+const normalizeLocale = (locale: string) => {
+    if (!locale) return ''
+    const [lang, region] = locale.replace('_', '-').split('-')
+    return region
+        ? `${lang.toLowerCase()}-${region.toUpperCase()}`
+        : lang.toLowerCase()
+}
+
+export function getLanguageLabelsimple(locale: string): string {
+    const normalized = locale.replace('_', '-')
+    return normalized
+}
+
 
 const TIP_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
     usage: {
@@ -93,9 +109,37 @@ const TIP_ICONS: Record<string, string> = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/**
+ * Resolve a value from a locale-keyed record using a language code.
+ * Tries: exact match → LANG_TO_LOCALE mapping → prefix match (e.g. 'ur' → 'ur-PK')
+ */
+function findLocaleValue(
+    record: Record<string, string> | undefined,
+    langCode: string
+): string | undefined {
+    if (!record) return undefined
+
+    const normalized = normalizeLocale(langCode)
+
+    // 1. Exact match
+    if (record[normalized]) return record[normalized]
+
+    // 2. Prefix match (en → en-GB, en-US, etc)
+    const prefix = normalized.split('-')[0]
+
+    for (const key of Object.keys(record)) {
+        const normalizedKey = normalizeLocale(key)
+        if (normalizedKey.startsWith(prefix + '-')) {
+            return record[key]
+        }
+    }
+
+    return undefined
+}
+
 export function getLanguageLabel(locale: string): string {
-    const normalized = locale.replace('_', '-')
-    return LANGUAGE_LABELS[normalized] || locale
+    const normalized = normalizeLocale(locale)
+    return LANGUAGE_LABELS[normalized] || normalized
 }
 
 function cleanVoiceName(name: string) {
@@ -182,14 +226,26 @@ function PracticeCard({
     activeRecordingId: string | null
     onRecordingStart: (id: string) => void
     onRecordingStop: (id: string, expected: string) => void
-}) {
+})
+{
     const [isPlaying, setIsPlaying] = useState(false)
     const [result, setResult] = useState<RecordingResult | null>(null)
     const [liveTranscript, setLiveTranscript] = useState('')
     const recorderRef = useRef<VoiceRecorder | null>(null)
+    const stopTimerRef = useRef<NodeJS.Timeout | null>(null)
 
     const isRecording = activeRecordingId === item.id
     const isOtherRecording = !!activeRecordingId && !isRecording
+
+    // ✅ PUT IT HERE (top-level inside component)
+    useEffect(() => {
+        return () => {
+            if (stopTimerRef.current) {
+                clearTimeout(stopTimerRef.current)
+            }
+        }
+    }, [])
+
 
     const speak = useCallback(() => {
         if (isPlaying) {
@@ -208,12 +264,55 @@ function PracticeCard({
         window.speechSynthesis.speak(utt)
     }, [isPlaying, item.translationText, selectedLanguage, voiceRef])
 
+
+    const stopRec = useCallback(async () => {
+        const recorder = recorderRef.current
+        if (!recorder) return
+
+        // ✅ CLEAR TIMER
+        if (stopTimerRef.current) {
+            clearTimeout(stopTimerRef.current)
+            stopTimerRef.current = null
+        }
+
+        try {
+            const blob = await recorder.stopRecording()
+            const audioUrl = VoiceRecorder.createAudioUrl(blob)
+
+            const finalTranscript = liveTranscript.trim() || 'No speech detected'
+
+            const { score, matchedWords, missedWords } =
+                computePronunciationScore(
+                    finalTranscript,
+                    cleanTextForTTS(item.translationText)
+                )
+
+            setResult({
+                id: item.id,
+                transcript: finalTranscript,
+                score,
+                matchedWords,
+                missedWords,
+                audioUrl,
+            })
+        } catch (e) {
+            console.error('[PracticeCard] stopRec error:', e)
+        }
+
+        onRecordingStop(item.id, item.translationText)
+        recorderRef.current = null
+    }, [liveTranscript, item.id, item.translationText, onRecordingStop])
+
+
     const startRec = useCallback(async () => {
         window.speechSynthesis.cancel()
         setIsPlaying(false)
+
         if (result?.audioUrl) URL.revokeObjectURL(result.audioUrl)
+
         setResult(null)
         setLiveTranscript('')
+
         let recorder: VoiceRecorder
         try {
             recorder = new VoiceRecorder()
@@ -221,154 +320,127 @@ function PracticeCard({
             alert('VoiceRecorder not available.')
             return
         }
+
         recorderRef.current = recorder
         recorder.setLanguage(selectedLanguage)
         recorder.onTranscriptUpdate = (t: string) => setLiveTranscript(t)
+
         try {
             await recorder.startRecording()
             onRecordingStart(item.id)
+
+            // ✅ AUTO STOP AFTER 10 SEC
+            stopTimerRef.current = setTimeout(() => {
+                stopRec() // force stop
+            }, 10000)
+
         } catch {
             alert('Could not access microphone.')
         }
-    }, [selectedLanguage, result, item.id, onRecordingStart])
-
-    const stopRec = useCallback(async () => {
-        const recorder = recorderRef.current
-        if (!recorder) return
-        try {
-            const blob = await recorder.stopRecording()
-            const audioUrl = VoiceRecorder.createAudioUrl(blob)
-            const finalTranscript = liveTranscript.trim() || 'No speech detected'
-            const { score, matchedWords, missedWords } = computePronunciationScore(
-                finalTranscript,
-                cleanTextForTTS(item.translationText)
-            )
-            setResult({ id: item.id, transcript: finalTranscript, score, matchedWords, missedWords, audioUrl })
-        } catch (e) {
-            console.error('[PracticeCard] stopRec error:', e)
-        }
-        onRecordingStop(item.id, item.translationText)
-        recorderRef.current = null
-    }, [liveTranscript, item.id, item.translationText, onRecordingStop])
+    }, [selectedLanguage, result, item.id, onRecordingStart, stopRec])
 
     return (
         <div className={`
-            relative rounded-2xl overflow-hidden transition-all duration-300
+            relative rounded-2xl transition-all duration-300
             ${isRecording
             ? 'ring-2 ring-rose-400 shadow-lg shadow-rose-400/20'
             : 'ring-1 ring-slate-200 dark:ring-slate-700/60'}
-            bg-white dark:bg-slate-900
+            bg-white dark:bg-slate-900 hover:shadow-md
         `}>
-            {/* Card header: native → translation */}
-            <div className="px-4 pt-4 pb-3">
-                {/* Badge */}
-                <span className={`
-                    inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full mb-3
-                    ${item.isWord
-                    ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400'
-                    : 'bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400'}
-                `}>
-                    {item.isWord ? '🔤 Word' : '💬 Phrase'}
-                </span>
 
-                {/* Original */}
-                <div className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">
-                    Original
-                </div>
-                <div className="text-xl font-bold text-slate-800 dark:text-slate-100 leading-snug mb-3">
-                    {item.nativeText}
-                </div>
+            {/* HEADER */}
+            <div className="px-4 py-4 flex items-start justify-between gap-3">
 
-                {/* Divider arrow */}
-                <div className="flex items-center gap-2 mb-3">
-                    <div className="flex-1 h-px bg-slate-100 dark:bg-slate-800" />
-                    <svg className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                    <div className="flex-1 h-px bg-slate-100 dark:bg-slate-800" />
-                </div>
+                {/* LEFT CONTENT */}
+                <div className="min-w-0 flex-1">
 
-                {/* Translation — what they practice */}
-                <div className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-0.5">
-                    Say this
-                </div>
-                <div className="text-2xl font-black text-[#137fec] leading-snug tracking-tight">
-                    {item.translationText}
-                </div>
+                    <div className="flex items-center gap-2 mb-1">
+                        {/*<span className={`*/}
+                        {/*    text-[9px] font-bold uppercase tracking-widest px-2 py-[2px] rounded-full*/}
+                        {/*    ${item.isWord*/}
+                        {/*    ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400'*/}
+                        {/*    : 'bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400'}*/}
+                        {/*`}>*/}
+                        {/*    {item.isWord ? 'Word' : 'Phrase'}*/}
+                        {/*</span>*/}
 
-                {/* Romanization */}
-                {item.romanization && (
-                    <div className="mt-1.5 text-sm text-slate-500 dark:text-slate-400 font-mono italic">
-                        /{item.romanization}/
+                        <div className="text-[15px] font-semibold text-[#0d141b] dark:text-white truncate">
+                            {item.translationText}
+                        </div>
+
+
+                        <div className="mt-1 text-[13px] text-[#6b8cae] dark:text-slate-400 truncate">
+                            {item.nativeText}
+                        </div>
                     </div>
-                )}
-            </div>
 
-            {/* Action bar */}
-            <div className="px-4 pb-4 flex items-center gap-2">
-                {/* Listen */}
-                <button
-                    onClick={speak}
-                    disabled={isOtherRecording || isRecording}
-                    title={isPlaying ? 'Stop' : 'Listen to pronunciation'}
-                    className={`
-                        flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all duration-200
-                        ${isPlaying
-                        ? 'bg-[#137fec] text-white scale-105 shadow-md shadow-[#137fec]/30'
-                        : 'bg-blue-50 dark:bg-blue-900/20 text-[#137fec] hover:scale-105 hover:shadow-md hover:shadow-[#137fec]/20'}
-                        ${(isOtherRecording || isRecording) ? 'opacity-40 cursor-not-allowed' : ''}
-                    `}
-                >
-                    {isPlaying ? (
-                        <>
-                            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                    {item.romanization && (
+                        <div className="text-[13px] text-[#6b8cae] dark:text-slate-400 truncate">
+                            {item.romanization}
+                        </div>
+                    )}
+
+
+                </div>
+
+                {/* RIGHT ACTIONS */}
+                <div className="flex items-center gap-2 shrink-0">
+
+                    {/* LISTEN */}
+                    <button
+                        onClick={speak}
+                        disabled={isOtherRecording || isRecording}
+                        className={`
+                            w-9 h-9 flex items-center justify-center rounded-xl transition
+                            ${isPlaying
+                            ? 'bg-[#137fec] text-white shadow-md'
+                            : 'bg-blue-50 dark:bg-blue-900/20 text-[#137fec] hover:scale-105'}
+                            ${(isOtherRecording || isRecording) ? 'opacity-40 cursor-not-allowed' : ''}
+                        `}
+                    >
+                        {isPlaying ? (
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                                 <rect x="6" y="5" width="4" height="14" rx="1" />
                                 <rect x="14" y="5" width="4" height="14" rx="1" />
                             </svg>
-                            Stop
-                        </>
-                    ) : (
-                        <>
-                            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                        ) : (
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                                 <path d="M8 5v14l11-7z" />
                             </svg>
-                            Listen
-                        </>
-                    )}
-                </button>
+                        )}
+                    </button>
 
-                {/* Record / Stop */}
-                {isRecording ? (
-                    <button
-                        onClick={stopRec}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-rose-500 text-white text-xs font-bold hover:bg-rose-600 transition-all animate-pulse"
-                    >
-                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                            <rect x="6" y="6" width="12" height="12" rx="2" />
-                        </svg>
-                        Stop recording
-                    </button>
-                ) : (
-                    <button
-                        onClick={startRec}
-                        disabled={isOtherRecording || isPlaying}
-                        className={`
-                            flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200
-                            ${(isOtherRecording || isPlaying)
-                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
-                            : 'bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 hover:scale-[1.02] hover:shadow-md hover:shadow-rose-400/20'}
-                        `}
-                    >
-                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
-                            <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
-                        </svg>
-                        Practice
-                    </button>
-                )}
+                    {/* PRACTICE / STOP */}
+                    {isRecording ? (
+                        <button
+                            onClick={stopRec}
+                            className="w-9 h-9 flex items-center justify-center rounded-xl bg-rose-500 text-white animate-pulse"
+                        >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                <rect x="6" y="6" width="12" height="12" rx="2" />
+                            </svg>
+                        </button>
+                    ) : (
+                        <button
+                            onClick={startRec}
+                            disabled={isOtherRecording || isPlaying}
+                            className={`
+                                w-9 h-9 flex items-center justify-center rounded-xl transition
+                                ${(isOtherRecording || isPlaying)
+                                ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                                : 'bg-rose-50 dark:bg-rose-900/20 text-rose-600 hover:scale-105'}
+                            `}
+                        >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
+                                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+                            </svg>
+                        </button>
+                    )}
+                </div>
             </div>
 
-            {/* Live transcript */}
+            {/* LIVE TRANSCRIPT */}
             {isRecording && (
                 <div className="mx-4 mb-4 bg-rose-50 dark:bg-rose-950/40 rounded-xl px-4 py-3 border border-rose-200 dark:border-rose-800/40">
                     <div className="flex items-center gap-2 mb-1">
@@ -381,37 +453,34 @@ function PracticeCard({
                 </div>
             )}
 
-            {/* Result panel */}
+            {/* RESULT PANEL (UNCHANGED) */}
             {result && (
                 <div className="mx-4 mb-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl p-4 border border-slate-200 dark:border-slate-700 space-y-3">
-                    {/* Score */}
-                    <div className="flex items-center gap-4">
-                        <ScoreRing score={result.score} />
-                        <div>
-                            <div className="text-base font-black text-slate-800 dark:text-white">
-                                {result.score >= 80 ? '🎉 Excellent!' : result.score >= 50 ? '👍 Good effort!' : '💪 Keep going!'}
-                            </div>
-                            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                {result.matchedWords.length} / {result.matchedWords.length + result.missedWords.length} words matched
-                            </div>
-                        </div>
-                    </div>
+                    {/*<div className="flex items-center gap-4">*/}
+                    {/*    <ScoreRing score={result.score} />*/}
+                    {/*    <div>*/}
+                    {/*        <div className="text-base font-black text-slate-800 dark:text-white">*/}
+                    {/*            {result.score >= 80 ? '🎉 Excellent!' : result.score >= 50 ? '👍 Good effort!' : '💪 Keep going!'}*/}
+                    {/*        </div>*/}
+                    {/*        <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">*/}
+                    {/*            {result.matchedWords.length} / {result.matchedWords.length + result.missedWords.length} words matched*/}
+                    {/*        </div>*/}
+                    {/*    </div>*/}
+                    {/*</div>*/}
 
-                    {/* You said */}
                     <div>
-                        <div className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">You said</div>
+                        <div className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">You said</div>
                         <p className="text-sm text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 rounded-lg px-3 py-2 font-mono border border-slate-200 dark:border-slate-700">
                             {result.transcript}
                         </p>
                     </div>
 
-                    {/* Missed words */}
                     {result.missedWords.length > 0 && (
                         <div>
-                            <div className="text-[11px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-1.5">Words to work on</div>
+                            <div className="text-[11px] font-bold text-amber-600 uppercase tracking-widest mb-1.5">Words to work on</div>
                             <div className="flex flex-wrap gap-1.5">
                                 {result.missedWords.map((w, i) => (
-                                    <span key={i} className="px-2 py-0.5 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-xs font-mono font-bold">
+                                    <span key={i} className="px-2 py-0.5 rounded-lg bg-amber-100 text-amber-700 text-xs font-mono font-bold">
                                         {w}
                                     </span>
                                 ))}
@@ -419,31 +488,18 @@ function PracticeCard({
                         </div>
                     )}
 
-                    {/* Playback */}
                     {result.audioUrl && (
                         <div>
-                            <div className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">Your recording</div>
+                            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Your recording</div>
                             <audio controls src={result.audioUrl} className="w-full h-9 rounded-lg" />
                         </div>
                     )}
 
-                    {/* Actions */}
                     <div className="flex gap-2 pt-1">
-                        <button
-                            onClick={speak}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-50 dark:bg-blue-900/20 text-[#137fec] hover:scale-105 transition-transform"
-                        >
-                            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                        <button onClick={speak} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-50 text-[#137fec]">
                             Listen again
                         </button>
-                        <button
-                            onClick={() => { setResult(null); startRec() }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 hover:scale-105 transition-transform"
-                        >
-                            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
-                                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
-                            </svg>
+                        <button onClick={() => { setResult(null); startRec() }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-50 text-rose-600">
                             Try again
                         </button>
                     </div>
@@ -458,14 +514,20 @@ function PracticeCard({
 function PronunciationPracticeSection({
                                           vocabulary,
                                           selectedLanguage,
+                                          nativeLangCode,
                                       }: {
     vocabulary: VocabularyItem[]
     selectedLanguage: string
-}) {
+    nativeLangCode: string
+})
+{
     const ttsRef = useRef<TextToSpeech | null>(null)
     const voiceRef = useRef<SpeechSynthesisVoice | null>(null)
     const [voicesLoaded, setVoicesLoaded] = useState(false)
     const [activeRecordingId, setActiveRecordingId] = useState<string | null>(null)
+
+    const normalizedLang = normalizeLocale(selectedLanguage)
+    const learningPrefix = normalizedLang.split('-')[0]
 
     useEffect(() => {
         let tts: TextToSpeech
@@ -490,31 +552,41 @@ function PronunciationPracticeSection({
         return () => { try { tts.stop() } catch {} }
     }, [selectedLanguage])
 
-    // Build practice items — TTS speaks the TRANSLATION, card shows native → translation + romanization
+    // Build practice items:
+    //   nativeText   = word in user's NATIVE language (what they know)
+    //   translationText = word in LEARNING language (what they must say)
+    //   romanization = romanized form of the learning language word
     const practiceItems: PracticeItem[] = vocabulary.flatMap((v) => {
-        const translation = v.translations?.[selectedLanguage]
-        const romanization = v.romanization?.[selectedLanguage]
+        const learningTranslation = v.translations?.[normalizedLang]
+            || findLocaleValue(v.translations, learningPrefix)
+        const learningRomanization = v.romanization?.[normalizedLang]
+            || findLocaleValue(v.romanization, learningPrefix)
+        const nativeWord = findLocaleValue(v.translations, nativeLangCode)
+            || v.word
         const items: PracticeItem[] = []
 
-        // Word card — only if translation exists
-        if (translation) {
+        // Word card — only if learning language translation exists
+        if (learningTranslation) {
             items.push({
                 id: `word-${v.id}`,
-                nativeText: v.word,
-                translationText: translation,
-                romanization,
+                nativeText: nativeWord,
+                translationText: learningTranslation,
+                romanization: learningRomanization,
                 isWord: true,
             })
         }
 
         // Example sentence cards
         ;(v.exampleSentences ?? []).forEach((ex, i) => {
-            const exTranslation = ex.translations?.[selectedLanguage]
-            if (!exTranslation) return
+            const exLearning = ex.translations?.[normalizedLang]
+                || findLocaleValue(ex.translations, learningPrefix)
+            if (!exLearning) return
+            const exNative = findLocaleValue(ex.translations, nativeLangCode)
+                || ex.text
             items.push({
                 id: `ex-${v.id}-${i}`,
-                nativeText: ex.text,
-                translationText: exTranslation,
+                nativeText: exNative,
+                translationText: exLearning,
                 romanization: undefined,
                 isWord: false,
             })
@@ -532,7 +604,7 @@ function PronunciationPracticeSection({
                         🗣️ Pronunciation Practice
                     </h2>
                     <p className="text-sm text-[#4c739a] dark:text-slate-400 mt-0.5">
-                        Listen to the translation, then record yourself saying it.
+                        See the word in your language, then record yourself saying it in {getLanguageLabel(selectedLanguage)}.
                     </p>
                 </div>
                 <span className={`
@@ -616,130 +688,168 @@ function VocabTipBadge({ type }: { type: string }) {
 function VocabularyDetails({
                                vocab,
                                selectedLanguage,
+                               nativeLangCode,
                            }: {
     vocab: VocabularyItem[]
     selectedLanguage: string
-}) {
+    nativeLangCode: string
+})
+{
+    const normalizedLang = normalizeLocale(selectedLanguage)
     const [expandedId, setExpandedId] = useState<string | null>(null)
     if (!vocab || vocab.length === 0) return null
 
+    const learningPrefix = normalizedLang.split('-')[0]
+
     return (
         <div className="w-full mt-8 text-left">
-            <h2 className="text-lg font-bold text-[#0d141b] dark:text-white mb-4">
-                📚 Vocabulary
-            </h2>
-            <div className="space-y-3">
-                {vocab.map((item) => {
-                    const isExpanded = expandedId === item.id
-                    const translation = item.translations?.[selectedLanguage]
-                    const romanization = item.romanization?.[selectedLanguage]
-                    const localDef = item.definitionByLang?.[selectedLanguage]
+            {/*<h2 className="text-lg font-bold text-[#0d141b] dark:text-white mb-4">*/}
+            {/*    📚 Vocabulary*/}
+            {/*</h2>*/}
+            {/*<div className="space-y-3">*/}
+            {/*    {vocab.map((item) => {*/}
+            {/*        const isExpanded = expandedId === item.id*/}
 
-                    return (
-                        <div
-                            key={item.id}
-                            className="bg-white dark:bg-slate-900 border border-[#e7edf3] dark:border-slate-800 rounded-xl overflow-hidden"
-                        >
-                            <button
-                                onClick={() => setExpandedId(isExpanded ? null : item.id)}
-                                className="w-full text-left px-5 py-4 flex items-center gap-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-                            >
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-3 flex-wrap">
-                                        <span className="font-bold text-[#0d141b] dark:text-white text-base">
-                                            {item.word}
-                                        </span>
-                                        {translation && (
-                                            <span className="text-sm font-semibold text-[#137fec]">
-                                                {translation}
-                                            </span>
-                                        )}
-                                        {romanization && (
-                                            <span className="text-xs text-[#4c739a] dark:text-slate-400 font-mono italic">
-                                                {romanization}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <p className="text-xs text-[#4c739a] dark:text-slate-500 mt-0.5 line-clamp-1">
-                                        {localDef || item.definition}
-                                    </p>
-                                </div>
-                                <svg
-                                    className={`w-4 h-4 text-[#4c739a] transition-transform duration-200 flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}
-                                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                                >
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                </svg>
-                            </button>
+            {/*        // ── Learning language values ──*/}
+            {/*        const learningWord = item.translations?.[normalizedLang]*/}
+            {/*            || findLocaleValue(item.translations, learningPrefix)*/}
+            {/*            || item.word*/}
+            {/*        const learningRomanization = item.romanization?.[selectedLanguage]*/}
+            {/*            || findLocaleValue(item.romanization, learningPrefix)*/}
 
-                            {isExpanded && (
-                                <div className="border-t border-[#e7edf3] dark:border-slate-800 px-5 pb-5 pt-4 space-y-5">
-                                    <div>
-                                        <p className="text-xs font-bold text-[#4c739a] dark:text-slate-400 uppercase tracking-wider mb-1">
-                                            Definition
-                                        </p>
-                                        <p className="text-sm text-[#0d141b] dark:text-slate-200">
-                                            {localDef || item.definition}
-                                        </p>
-                                    </div>
+            {/*        // ── Native language values ──*/}
+            {/*        const nativeWord = findLocaleValue(item.translations, nativeLangCode)*/}
+            {/*            || item.word*/}
+            {/*        const nativeMeaning = findLocaleValue(item.definitionByLang, nativeLangCode)*/}
+            {/*            || item.definition*/}
 
-                                    {(item.exampleSentences ?? []).length > 0 && (
-                                        <div>
-                                            <p className="text-xs font-bold text-[#4c739a] dark:text-slate-400 uppercase tracking-wider mb-2">
-                                                Examples
-                                            </p>
-                                            <div className="space-y-2">
-                                                {(item.exampleSentences ?? []).map((ex, i) => {
-                                                    const exTranslation = ex.translations?.[selectedLanguage]
-                                                    return (
-                                                        <div key={i} className="bg-slate-50 dark:bg-slate-800/50 rounded-lg px-4 py-3">
-                                                            <p className="text-sm text-[#0d141b] dark:text-slate-200 font-medium">
-                                                                {ex.text}
-                                                            </p>
-                                                            {exTranslation && (
-                                                                <p className="text-sm text-[#137fec] mt-1">{exTranslation}</p>
-                                                            )}
-                                                        </div>
-                                                    )
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
+            {/*        return (*/}
+            {/*            <div*/}
+            {/*                key={item.id}*/}
+            {/*                className="bg-white dark:bg-slate-900 border border-[#e7edf3] dark:border-slate-800 rounded-xl overflow-hidden"*/}
+            {/*            >*/}
+            {/*                <button*/}
+            {/*                    onClick={() => setExpandedId(isExpanded ? null : item.id)}*/}
+            {/*                    className="w-full text-left px-5 py-4 flex items-center gap-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"*/}
+            {/*                >*/}
+            {/*                    <div className="flex-1 min-w-0">*/}
+            {/*                        <div className="flex items-center gap-3 flex-wrap">*/}
+            {/*                            /!* Learning language word — PRIMARY *!/*/}
+            {/*                            <span className="font-bold text-[#0d141b] dark:text-white text-base">*/}
+            {/*                                {learningWord}*/}
+            {/*                            </span>*/}
+            {/*                            /!* Native language word — secondary context *!/*/}
+            {/*                            {nativeWord && nativeWord !== learningWord && (*/}
+            {/*                                <span className="text-sm text-[#4c739a] dark:text-slate-400">*/}
+            {/*                                    {nativeWord}*/}
+            {/*                                </span>*/}
+            {/*                            )}*/}
+            {/*                            /!* Romanization of learning word *!/*/}
+            {/*                            {learningRomanization && (*/}
+            {/*                                <span className="text-xs text-[#4c739a] dark:text-slate-400 font-mono italic">*/}
+            {/*                                    /{learningRomanization}/*/}
+            {/*                                </span>*/}
+            {/*                            )}*/}
+            {/*                        </div>*/}
+            {/*                        /!* Native language meaning / definition *!/*/}
+            {/*                        <p className="text-xs text-[#4c739a] dark:text-slate-500 mt-0.5 line-clamp-1">*/}
+            {/*                            {nativeMeaning}*/}
+            {/*                        </p>*/}
+            {/*                    </div>*/}
+            {/*                    <svg*/}
+            {/*                        className={`w-4 h-4 text-[#4c739a] transition-transform duration-200 flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}*/}
+            {/*                        fill="none" stroke="currentColor" viewBox="0 0 24 24"*/}
+            {/*                    >*/}
+            {/*                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />*/}
+            {/*                    </svg>*/}
+            {/*                </button>*/}
 
-                                    {(item.tips ?? []).length > 0 && (
-                                        <div>
-                                            <p className="text-xs font-bold text-[#4c739a] dark:text-slate-400 uppercase tracking-wider mb-2">
-                                                Tips
-                                            </p>
-                                            <div className="space-y-2">
-                                                {(item.tips ?? []).map((tip, i) => {
-                                                    const cfg = TIP_CONFIG[tip.type] ?? {
-                                                        color: 'text-slate-700 dark:text-slate-300',
-                                                        bg: 'bg-slate-100 dark:bg-slate-800',
-                                                        border: 'border-slate-200 dark:border-slate-700',
-                                                        label: tip.type,
-                                                    }
-                                                    return (
-                                                        <div key={i} className={`flex items-start gap-3 rounded-lg p-3 border ${cfg.bg} ${cfg.border}`}>
-                                                            <span style={{ fontSize: 14, lineHeight: 1.4 }}>
-                                                                {TIP_ICONS[tip.type] ?? '💡'}
-                                                            </span>
-                                                            <div className="flex-1 min-w-0">
-                                                                <VocabTipBadge type={tip.type} />
-                                                                <p className={`text-sm mt-1 ${cfg.color}`}>{tip.text}</p>
-                                                            </div>
-                                                        </div>
-                                                    )
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    )
-                })}
-            </div>
+            {/*                {isExpanded && (*/}
+            {/*                    <div className="border-t border-[#e7edf3] dark:border-slate-800 px-5 pb-5 pt-4 space-y-5">*/}
+            {/*                        /!* Meaning — native language *!/*/}
+            {/*                        <div>*/}
+            {/*                            <p className="text-xs font-bold text-[#4c739a] dark:text-slate-400 uppercase tracking-wider mb-1">*/}
+            {/*                                Meaning*/}
+            {/*                            </p>*/}
+            {/*                            <p className="text-sm text-[#0d141b] dark:text-slate-200">*/}
+            {/*                                {nativeMeaning}*/}
+            {/*                            </p>*/}
+            {/*                        </div>*/}
+
+            {/*                        /!* Pronunciation — learning language romanization *!/*/}
+            {/*                        {learningRomanization && (*/}
+            {/*                            <div>*/}
+            {/*                                <p className="text-xs font-bold text-[#4c739a] dark:text-slate-400 uppercase tracking-wider mb-1">*/}
+            {/*                                    Pronunciation*/}
+            {/*                                </p>*/}
+            {/*                                <p className="text-sm text-[#0d141b] dark:text-slate-200 font-mono">*/}
+            {/*                                    {learningRomanization}*/}
+            {/*                                </p>*/}
+            {/*                            </div>*/}
+            {/*                        )}*/}
+
+            {/*                        /!* Examples — learning language text with native language translation *!/*/}
+            {/*                        {(item.exampleSentences ?? []).length > 0 && (*/}
+            {/*                            <div>*/}
+            {/*                                <p className="text-xs font-bold text-[#4c739a] dark:text-slate-400 uppercase tracking-wider mb-2">*/}
+            {/*                                    Examples*/}
+            {/*                                </p>*/}
+            {/*                                <div className="space-y-2">*/}
+            {/*                                    {(item.exampleSentences ?? []).map((ex, i) => {*/}
+            {/*                                        const exLearning = ex.translations?.[normalizedLang]*/}
+            {/*                                            || findLocaleValue(ex.translations, learningPrefix)*/}
+            {/*                                        const exNative = findLocaleValue(ex.translations, nativeLangCode)*/}
+            {/*                                        const displayLearning = exLearning || ex.text*/}
+            {/*                                        return (*/}
+            {/*                                            <div key={i} className="bg-slate-50 dark:bg-slate-800/50 rounded-lg px-4 py-3">*/}
+            {/*                                                <p className="text-sm text-[#0d141b] dark:text-slate-200 font-medium">*/}
+            {/*                                                    {displayLearning}*/}
+            {/*                                                </p>*/}
+            {/*                                                {exNative && exNative !== displayLearning && (*/}
+            {/*                                                    <p className="text-sm text-[#4c739a] dark:text-slate-400 mt-1">{exNative}</p>*/}
+            {/*                                                )}*/}
+            {/*                                            </div>*/}
+            {/*                                        )*/}
+            {/*                                    })}*/}
+            {/*                                </div>*/}
+            {/*                            </div>*/}
+            {/*                        )}*/}
+
+            {/*                        /!* Tips — language-neutral *!/*/}
+            {/*                        {(item.tips ?? []).length > 0 && (*/}
+            {/*                            <div>*/}
+            {/*                                <p className="text-xs font-bold text-[#4c739a] dark:text-slate-400 uppercase tracking-wider mb-2">*/}
+            {/*                                    Tips*/}
+            {/*                                </p>*/}
+            {/*                                <div className="space-y-2">*/}
+            {/*                                    {(item.tips ?? []).map((tip, i) => {*/}
+            {/*                                        const cfg = TIP_CONFIG[tip.type] ?? {*/}
+            {/*                                            color: 'text-slate-700 dark:text-slate-300',*/}
+            {/*                                            bg: 'bg-slate-100 dark:bg-slate-800',*/}
+            {/*                                            border: 'border-slate-200 dark:border-slate-700',*/}
+            {/*                                            label: tip.type,*/}
+            {/*                                        }*/}
+            {/*                                        return (*/}
+            {/*                                            <div key={i} className={`flex items-start gap-3 rounded-lg p-3 border ${cfg.bg} ${cfg.border}`}>*/}
+            {/*                                                <span style={{ fontSize: 14, lineHeight: 1.4 }}>*/}
+            {/*                                                    {TIP_ICONS[tip.type] ?? '💡'}*/}
+            {/*                                                </span>*/}
+            {/*                                                <div className="flex-1 min-w-0">*/}
+            {/*                                                    <VocabTipBadge type={tip.type} />*/}
+            {/*                                                    <p className={`text-sm mt-1 ${cfg.color}`}>{tip.text}</p>*/}
+            {/*                                                </div>*/}
+            {/*                                            </div>*/}
+            {/*                                        )*/}
+            {/*                                    })}*/}
+            {/*                                </div>*/}
+            {/*                            </div>*/}
+            {/*                        )}*/}
+            {/*                    </div>*/}
+            {/*                )}*/}
+            {/*            </div>*/}
+            {/*        )*/}
+            {/*    })}*/}
+            {/*</div>*/}
         </div>
     )
 }
@@ -760,14 +870,18 @@ export default function LessonPage({
     const [recordingMode, setRecordingMode] = useState<'automatic' | 'manual'>('automatic')
     const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
     const [savedLanguage, setSavedLanguage] = useState<string | null>(null)
+    const [nativeLangCode, setNativeLangCode] = useState('en')
 
     const STORAGE_KEY = 'selected-language-code'
+    const normalizedLang = normalizeLocale(selectedLanguage)
 
     useEffect(() => {
         const storedAccent = localStorage.getItem('speaki_accent')
         const storedRecordingType = localStorage.getItem('speaki_recording_type') as 'automatic' | 'manual' | null
+        const storedNative = localStorage.getItem('speaki_native_lang')
         if (storedAccent) setSelectedLanguage(storedAccent)
         if (storedRecordingType) setRecordingMode(storedRecordingType)
+        if (storedNative) setNativeLangCode(storedNative)
     }, [])
 
     useEffect(() => {
@@ -801,11 +915,17 @@ export default function LessonPage({
 
     useEffect(() => {
         const current = VOICE_AGENTS.find((a) => a.id === selectedVoiceAgentId)
-        if (current && current.lang.split('-')[0] !== selectedLanguage.split('-')[0]) {
+
+        if (!current) return
+
+        const currentPrefix = current.lang.replace('_', '-').split('-')[0]
+        const selectedPrefix = normalizedLang.split('-')[0]
+
+        if (currentPrefix !== selectedPrefix) {
             const defaultAgent = getDefaultVoiceAgentForLang(selectedLanguage)
             if (defaultAgent) setSelectedVoiceAgentId(defaultAgent.id)
         }
-    }, [selectedLanguage])
+    }, [selectedLanguage, selectedVoiceAgentId, normalizedLang])
 
     useEffect(() => {
         params.then((p) => setLessonId(p.id))
@@ -900,7 +1020,7 @@ export default function LessonPage({
                                             <SelectContent>
                                                 {voices
                                                     .filter((v: SpeechSynthesisVoice) =>
-                                                        v.lang.split('-')[0] === selectedLanguage.split('-')[0]
+                                                        v.lang.split('-')[0] === normalizedLang.split('-')[0]
                                                     )
                                                     .map((v: SpeechSynthesisVoice) => (
                                                         <SelectItem key={`${v.name}|${v.lang}`} value={`${v.name}|${v.lang}`}>
@@ -939,12 +1059,17 @@ export default function LessonPage({
                             </button>
 
                             {/* Vocabulary */}
-                            <VocabularyDetails vocab={vocabulary} selectedLanguage={selectedLanguage} />
+                            <VocabularyDetails
+                                vocab={vocabulary}
+                                selectedLanguage={selectedLanguage}
+                                nativeLangCode={nativeLangCode}
+                            />
 
                             {/* Pronunciation Practice */}
                             <PronunciationPracticeSection
                                 vocabulary={vocabulary}
                                 selectedLanguage={selectedLanguage}
+                                nativeLangCode={nativeLangCode}
                             />
                         </div>
                     )}
@@ -962,6 +1087,7 @@ export default function LessonPage({
                                 <PronunciationPracticeSection
                                     vocabulary={vocabulary}
                                     selectedLanguage={selectedLanguage}
+                                    nativeLangCode={nativeLangCode}
                                 />
                             </div>
                         </>
