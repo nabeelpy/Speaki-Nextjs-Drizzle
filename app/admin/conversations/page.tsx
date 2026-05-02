@@ -1,6 +1,6 @@
 import { LessonConversation } from '@/lib/types';
 import Link from 'next/link';
-import { PlusIcon, Pencil, MessageSquareText } from 'lucide-react';
+import { PlusIcon, Pencil, MessageSquareText, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DeleteConversation } from '@/components/admin/delete-conversation';
 import {
@@ -16,7 +16,7 @@ import { db } from "@/db";
 import { lessonConversations, lessons } from "@/db/schema";
 import { asc, eq, sql } from "drizzle-orm";
 
-async function getConversations(): Promise<(LessonConversation & { lessonTitle: string, turnsCount: number })[]> {
+async function getConversations(): Promise<(LessonConversation & { lessonTitle: string, turnsCount: number, vocabCount: number })[]> {
     try {
         const rows = await db
             .select({
@@ -27,6 +27,7 @@ async function getConversations(): Promise<(LessonConversation & { lessonTitle: 
                 scenario: lessonConversations.scenario,
                 lessonTitle: lessons.title,
                 turnsCount: sql<number>`(SELECT COUNT(*) FROM conversation_turns ct WHERE ct.conversation_id = ${lessonConversations.id})`,
+                vocabCount: sql<number>`(SELECT COUNT(*) FROM vocabulary v WHERE v.conversation_id = ${lessonConversations.id})`,
             })
             .from(lessonConversations)
             .leftJoin(lessons, eq(lessonConversations.lessonId, lessons.id))
@@ -70,6 +71,9 @@ export default async function TopPage() {
                                         Turns
                                     </TableHead>
                                     <TableHead className="px-3 py-5 font-medium">
+                                        Vocab
+                                    </TableHead>
+                                    <TableHead className="px-3 py-5 font-medium text-right">
                                         Actions
                                     </TableHead>
                                 </TableRow>
@@ -79,27 +83,39 @@ export default async function TopPage() {
                                     <TableRow key={conv.id} className="w-full border-b py-3 text-sm last-of-type:border-none hover:bg-gray-50">
                                         <TableCell className="whitespace-nowrap py-3 pl-6 pr-3">
                                             <div className="flex items-center gap-3">
-                                                <p>{conv.title}</p>
+                                                <p className="font-medium text-indigo-600">{conv.title}</p>
                                             </div>
                                         </TableCell>
-                                        <TableCell className="whitespace-nowrap px-3 py-3">
+                                        <TableCell className="whitespace-nowrap px-3 py-3 text-slate-500">
                                             {conv.scenario}
                                         </TableCell>
                                         <TableCell className="whitespace-nowrap px-3 py-3">
                                             {conv.lessonTitle || 'N/A'}
                                         </TableCell>
                                         <TableCell className="whitespace-nowrap px-3 py-3">
-                                            {conv.turnsCount}
+                                            <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                                                {conv.turnsCount} turns
+                                            </span>
+                                        </TableCell>
+                                        <TableCell className="whitespace-nowrap px-3 py-3">
+                                            <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-700/10">
+                                                {conv.vocabCount} items
+                                            </span>
                                         </TableCell>
                                         <TableCell className="whitespace-nowrap py-3 pl-6 pr-3">
-                                            <div className="flex justify-end gap-3">
+                                            <div className="flex justify-end gap-2">
                                                 <Link href={`/admin/conversations/${conv.id}/turns`}>
-                                                    <Button variant="secondary" size="icon" title="Manage Turns">
+                                                    <Button variant="ghost" size="icon" title="Manage Turns" className="text-slate-400 hover:text-indigo-600">
                                                         <MessageSquareText className="w-4 h-4" />
                                                     </Button>
                                                 </Link>
+                                                <Link href={`/admin/conversations/${conv.id}/vocabulary`}>
+                                                    <Button variant="ghost" size="icon" title="Manage Vocabulary" className="text-slate-400 hover:text-emerald-600">
+                                                        <BookOpen className="w-4 h-4" />
+                                                    </Button>
+                                                </Link>
                                                 <Link href={`/admin/conversations/${conv.id}/edit`}>
-                                                    <Button variant="outline" size="icon">
+                                                    <Button variant="ghost" size="icon" title="Edit Conversation" className="text-slate-400 hover:text-slate-900">
                                                         <Pencil className="w-4 h-4" />
                                                     </Button>
                                                 </Link>

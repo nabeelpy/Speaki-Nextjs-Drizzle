@@ -228,7 +228,7 @@ export const userProgress = pgTable("user_progress", {
 
 export const vocabulary = pgTable("vocabulary", {
 	id: varchar({ length: 255 }).primaryKey().notNull(),
-	lessonId: varchar("lesson_id", { length: 255 }),
+	// lessonId: varchar("lesson_id", { length: 255 }),
 	conversationId: varchar("conversation_id", { length: 255 }),
 	word: varchar({ length: 255 }).notNull(),
 	translations: jsonb(),
